@@ -1,24 +1,19 @@
 # Streamlit
 streamlit==1.25.0
 
-# Data processing
+# Data
 pandas==2.1.1
 numpy==1.26.4
 
-# Plotting & visualization
+# Plotting
 matplotlib==3.8.0
 altair==5.5.0
 
-# PDFs / reports
+# PDF reports
 reportlab>=4.0.0
 
-# Images (use a Pillow version with prebuilt wheels)
-Pillow==9.6.0
+# Images (compatible with Python 3.12)
+Pillow==12.1.0
 
-# Logging & pretty printing
+# Logging / pretty printing
 rich>=10.14.0,<14
-
-# Optional / support libraries
-pyarrow>=9.0.0
-python-dateutil>=2.9.0
-requests>=2.28.0
