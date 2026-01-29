@@ -1,0 +1,4 @@
+text,label,age,score,image_path,user_id,item_id
+Hello world,greeting,22,79,images/img1.png,1,101
+Goodbye,farewell,30,92,images/img2.png,2,102
+How are you?,question,25,88,images/img3.png,3,103

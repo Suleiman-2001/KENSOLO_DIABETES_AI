@@ -1,0 +1,83 @@
+{
+    "math score": [
+        {
+            "prediction": 69.27432639298428,
+            "category": "Medium",
+            "recommendation": "Monitor progress"
+        },
+        {
+            "prediction": 83.58947675534428,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": 87.84304524442999,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": 52.77226018192003,
+            "category": "Medium",
+            "recommendation": "Monitor progress"
+        },
+        {
+            "prediction": 73.13148833195143,
+            "category": "Medium",
+            "recommendation": "Monitor progress"
+        }
+    ],
+    "reading score": [
+        {
+            "prediction": 74.78235392784542,
+            "category": "Medium",
+            "recommendation": "Monitor progress"
+        },
+        {
+            "prediction": 85.64661727358596,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": 92.59590310107082,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": 47.131419449876766,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        },
+        {
+            "prediction": 76.14439964683359,
+            "category": "Medium",
+            "recommendation": "Monitor progress"
+        }
+    ],
+    "writing score": [
+        {
+            "prediction": 71.10182719454045,
+            "category": "Medium",
+            "recommendation": "Monitor progress"
+        },
+        {
+            "prediction": 87.75954668898312,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": 93.85051034539252,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": 55.376652350095746,
+            "category": "Medium",
+            "recommendation": "Monitor progress"
+        },
+        {
+            "prediction": 76.98962616524723,
+            "category": "Medium",
+            "recommendation": "Monitor progress"
+        }
+    ]
+}

@@ -1,0 +1,35 @@
+{
+    "math score": {
+        "model": "LinearRegression",
+        "sample_predictions": [
+            69.27432639298428,
+            83.58947675534428,
+            87.84304524442999,
+            52.77226018192003,
+            73.13148833195143
+        ],
+        "mean_prediction": 66.089
+    },
+    "reading score": {
+        "model": "LinearRegression",
+        "sample_predictions": [
+            74.78235392784542,
+            85.64661727358596,
+            92.59590310107082,
+            47.131419449876766,
+            76.14439964683359
+        ],
+        "mean_prediction": 69.169
+    },
+    "writing score": {
+        "model": "LinearRegression",
+        "sample_predictions": [
+            71.10182719454045,
+            87.75954668898312,
+            93.85051034539252,
+            55.376652350095746,
+            76.98962616524723
+        ],
+        "mean_prediction": 68.054
+    }
+}
