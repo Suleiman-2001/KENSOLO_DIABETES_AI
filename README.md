@@ -1,6 +1,6 @@
 # KENSOLO AI Analytics Dashboard
 
-This is a Streamlit-based AI analytics system that can:
+Streamlit-based AI analytics dashboard that can:
 
 - Detect potential issues in your dataset
 - Auto-select targets for prediction
@@ -20,9 +20,6 @@ This is a Streamlit-based AI analytics system that can:
 ## How to Run Locally
 
 Install dependencies:
+
+```bash
 pip install -r requirements.txt
-
-Run the app:
-streamlit run app.py
-
-All outputs will be saved in the 'outputs/' folder.
