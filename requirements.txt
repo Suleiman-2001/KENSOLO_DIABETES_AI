@@ -12,7 +12,7 @@ altair==5.5.0
 # PDF reports
 reportlab>=4.0.0
 
-# Images (compatible with Streamlit)
+# Images (prebuilt wheel, no zlib required)
 Pillow==9.5.0
 
 # Logging / pretty printing
