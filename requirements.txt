@@ -12,4 +12,4 @@ matplotlib==3.8.0
 reportlab>=4.0.0
 
 # Optional but useful for nicer logs
-rich>=14.3.1
+rich>=10.14.0,<14
