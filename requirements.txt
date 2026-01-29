@@ -12,8 +12,8 @@ altair==5.5.0
 # PDF reports
 reportlab>=4.0.0
 
-# Images (compatible with Python 3.12)
-Pillow==12.1.0
+# Images (compatible with Streamlit)
+Pillow==9.5.0
 
 # Logging / pretty printing
 rich>=10.14.0,<14
