@@ -20,8 +20,8 @@ Streamlit-based AI analytics dashboard that automatically detects dataset issues
 
 ## Demo
 
-![Dashboard Preview](dashboard.png)  
-*Replace `dashboard.png` with an actual screenshot of your app.*
+![Dashboard Preview](dashboard.png)
+
 
 ---
 
