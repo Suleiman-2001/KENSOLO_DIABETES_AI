@@ -1,24 +1,34 @@
-# KENSOLO-AI
+# 🤖 KENSOLO-AI
 
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![Streamlit](https://img.shields.io/badge/streamlit-online-success)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Streamlit-based AI analytics dashboard that automatically detects dataset issues, selects prediction targets, provides NLP summaries, generates predictions and recommendations, visualizes graphs, and offers downloadable JSON and PDF reports.
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Streamlit-brightgreen?style=for-the-badge&logo=streamlit)](https://kensolo-ai-gatundu2001.streamlit.app/)
+
+KENSOLO-AI is a **Streamlit-based AI analytics dashboard** that automatically detects dataset issues, selects prediction targets, generates predictions and recommendations, visualizes graphs, and provides downloadable reports.
 
 ---
 
-## Features
+## 🚀 Live Demo
+
+👉 **Open the app here:**  
+https://kensolo-ai-gatundu2001.streamlit.app/
+
+---
+
+## ✨ Features
+
 - 🔍 **Dataset Issue Detection** – Automatically find potential issues in your dataset  
 - 🎯 **Auto Target Selection** – Identify the best prediction targets  
 - 📝 **NLP Summaries** – Generate clear textual summaries of your data  
-- 📊 **Visualizations** – Interactive graphs for quick insights  
+- 📊 **Visualizations** – Auto-generated graphs for quick insights  
 - 🤖 **Predictions & Recommendations** – AI-powered decision support  
-- 💾 **Downloadable Reports** – Export results as JSON or PDF  
+- 💾 **Downloadable Reports** – Export results as JSON, CSV, and PDF  
 
 ---
 
-## Demo
+## 🖼 Demo Screenshots
 
 Here’s a preview of the **KENSOLO AI Dashboard**:
 
@@ -37,9 +47,10 @@ Here’s a preview of the **KENSOLO AI Dashboard**:
 
 ---
 
-## Quick Start
+## ⚡ Quick Start
 
-### Run Locally
+### ✅ Run Locally
+
 1. Clone the repository:
 ```bash
 git clone https://github.com/Suleiman-2001/KENSOLO-AI.git
