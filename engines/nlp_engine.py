@@ -1,20 +1,20 @@
-import re
+# engines/nlp_engine.py
+import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-def clean_text(text):
-    text = str(text).lower()
-    text = re.sub(r'[^a-zA-Z\s]', '', text)
-    return text
+def run_nlp_analysis(df, text_columns):
+    """
+    Convert text columns into TF-IDF features for predictive modeling.
+    """
+    nlp_features = pd.DataFrame()
 
-def run_nlp(df, column_types):
-    print("Running NLP engine...")
-    text_cols = [col for col, t in column_types.items() if t == "text"]
-    print(f"Text columns detected: {text_cols}")
-    if not text_cols:
-        return None
-    combined_text = df[text_cols].astype(str).agg(" ".join, axis=1)
-    cleaned_text = combined_text.apply(clean_text)
-    vectorizer = TfidfVectorizer(stop_words='english', max_features=1000)
-    X = vectorizer.fit_transform(cleaned_text)
-    print("NLP Feature extraction complete")
-    return X
+    for col in text_columns:
+        vectorizer = TfidfVectorizer(max_features=50)
+        tfidf_matrix = vectorizer.fit_transform(df[col].astype(str))
+        feature_names = [f"{col}_{feat}" for feat in vectorizer.get_feature_names_out()]
+        nlp_features = pd.concat(
+            [nlp_features, pd.DataFrame(tfidf_matrix.toarray(), columns=feature_names)],
+            axis=1
+        )
+
+    return nlp_features

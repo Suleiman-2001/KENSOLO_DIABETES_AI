@@ -1,25 +1,34 @@
-# KENSOLO AI Analytics Dashboard
+# KENSOLO-AI
 
-Streamlit-based AI analytics dashboard that can:
+![Python](https://img.shields.io/badge/python-3.12-blue)
+![Streamlit](https://img.shields.io/badge/streamlit-online-success)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-- Detect potential issues in your dataset
-- Auto-select targets for prediction
-- Provide NLP summaries
-- Generate predictions & recommendations
-- Visualize graphs
-- Provide downloadable JSON and PDF reports
+Streamlit-based AI analytics dashboard that automatically detects dataset issues, selects prediction targets, provides NLP summaries, generates predictions and recommendations, visualizes graphs, and offers downloadable JSON and PDF reports.
 
-## How to Deploy on Streamlit Cloud
+---
 
-1. Go to https://share.streamlit.io/
-2. Click 'New App' → Connect your GitHub repository
-3. Select the 'main' branch and 'app.py' as the main file
-4. Streamlit Cloud will install dependencies from 'requirements.txt'
-5. Your AI dashboard will be live online!
+## Features
+- 🔍 **Dataset Issue Detection** – Automatically find potential issues in your dataset
+- 🎯 **Auto Target Selection** – Identify the best prediction targets
+- 📝 **NLP Summaries** – Generate clear textual summaries of your data
+- 📊 **Visualizations** – Interactive graphs for quick insights
+- 🤖 **Predictions & Recommendations** – AI-powered decision support
+- 💾 **Downloadable Reports** – Export results as JSON or PDF
 
-## How to Run Locally
+---
 
-Install dependencies:
+## Demo
 
+![Dashboard Preview](dashboard.png)  
+*Replace `dashboard.png` with an actual screenshot of your app.*
+
+---
+
+## Quick Start
+
+### Run Locally
+1. Clone the repository:
 ```bash
-pip install -r requirements.txt
+git clone https://github.com/Suleiman-2001/KENSOLO-AI.git
+cd KENSOLO-AI
