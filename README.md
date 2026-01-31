@@ -20,8 +20,20 @@ Streamlit-based AI analytics dashboard that automatically detects dataset issues
 
 ## Demo
 
-![Dashboard Preview](dashboard.png)
+Here’s a preview of the KENSOLO AI Dashboard:
 
+![Dashboard 1](dashboard.png)
+![Dashboard 2](dashboard (2).png)
+![Dashboard 3](dashboard (3).png)
+![Dashboard 4](dashboard (4).png)
+![Dashboard 5](dashboard (5).png)
+![Dashboard 6](dashboard (6).png)
+![Dashboard 7](dashboard (7).png)
+![Dashboard 8](dashboard (8).png)
+![Dashboard 9](dashboard (9).png)
+![Dashboard 10](dashboard (10).png)
+![Dashboard 11](dashboard (11).png)
+![Dashboard 12](dashboard (12).png)
 
 ---
 
