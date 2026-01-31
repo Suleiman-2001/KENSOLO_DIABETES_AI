@@ -9,31 +9,31 @@ Streamlit-based AI analytics dashboard that automatically detects dataset issues
 ---
 
 ## Features
-- 🔍 **Dataset Issue Detection** – Automatically find potential issues in your dataset
-- 🎯 **Auto Target Selection** – Identify the best prediction targets
-- 📝 **NLP Summaries** – Generate clear textual summaries of your data
-- 📊 **Visualizations** – Interactive graphs for quick insights
-- 🤖 **Predictions & Recommendations** – AI-powered decision support
-- 💾 **Downloadable Reports** – Export results as JSON or PDF
+- 🔍 **Dataset Issue Detection** – Automatically find potential issues in your dataset  
+- 🎯 **Auto Target Selection** – Identify the best prediction targets  
+- 📝 **NLP Summaries** – Generate clear textual summaries of your data  
+- 📊 **Visualizations** – Interactive graphs for quick insights  
+- 🤖 **Predictions & Recommendations** – AI-powered decision support  
+- 💾 **Downloadable Reports** – Export results as JSON or PDF  
 
 ---
 
 ## Demo
 
-Here’s a preview of the KENSOLO AI Dashboard:
+Here’s a preview of the **KENSOLO AI Dashboard**:
 
 ![Dashboard 1](dashboard.png)
-![Dashboard 2](dashboard (2).png)
-![Dashboard 3](dashboard (3).png)
-![Dashboard 4](dashboard (4).png)
-![Dashboard 5](dashboard (5).png)
-![Dashboard 6](dashboard (6).png)
-![Dashboard 7](dashboard (7).png)
-![Dashboard 8](dashboard (8).png)
-![Dashboard 9](dashboard (9).png)
-![Dashboard 10](dashboard (10).png)
-![Dashboard 11](dashboard (11).png)
-![Dashboard 12](dashboard (12).png)
+![Dashboard 2](dashboard%20(2).png)
+![Dashboard 3](dashboard%20(3).png)
+![Dashboard 4](dashboard%20(4).png)
+![Dashboard 5](dashboard%20(5).png)
+![Dashboard 6](dashboard%20(6).png)
+![Dashboard 7](dashboard%20(7).png)
+![Dashboard 8](dashboard%20(8).png)
+![Dashboard 9](dashboard%20(9).png)
+![Dashboard 10](dashboard%20(10).png)
+![Dashboard 11](dashboard%20(11).png)
+![Dashboard 12](dashboard%20(12).png)
 
 ---
 
