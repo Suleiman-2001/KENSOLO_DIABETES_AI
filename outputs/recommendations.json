@@ -1,191 +1,29 @@
 {
-    "FinanceKey": [
+    "CurrencyKey": [
         {
-            "prediction": 5.433333333333334,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        },
-        {
-            "prediction": 5.826666666666667,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        },
-        {
-            "prediction": 3.8933333333333335,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        },
-        {
-            "prediction": 3.7466666666666666,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        },
-        {
-            "prediction": 4.933333333333334,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        }
-    ],
-    "DateKey": [
-        {
-            "prediction": 20050706.0,
-            "category": "High",
-            "recommendation": "Offer advanced opportunities"
-        },
-        {
-            "prediction": 20050706.0,
-            "category": "High",
-            "recommendation": "Offer advanced opportunities"
-        },
-        {
-            "prediction": 20050706.0,
-            "category": "High",
-            "recommendation": "Offer advanced opportunities"
-        },
-        {
-            "prediction": 20050706.0,
-            "category": "High",
-            "recommendation": "Offer advanced opportunities"
-        },
-        {
-            "prediction": 20050706.0,
-            "category": "High",
-            "recommendation": "Offer advanced opportunities"
-        }
-    ],
-    "OrganizationKey": [
-        {
-            "prediction": 3.049546957015991,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        },
-        {
-            "prediction": 3.049546957015991,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        },
-        {
-            "prediction": 3.0867109298706055,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        },
-        {
-            "prediction": 3.0867109298706055,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        },
-        {
-            "prediction": 3.040250778198242,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        }
-    ],
-    "DepartmentGroupKey": [
-        {
-            "prediction": 1.0,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        },
-        {
-            "prediction": 1.0333333333333334,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        },
-        {
-            "prediction": 1.0333333333333334,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        },
-        {
-            "prediction": 1.0333333333333334,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        },
-        {
-            "prediction": 3.4,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        }
-    ],
-    "ScenarioKey": [
-        {
-            "prediction": 1.12,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        },
-        {
-            "prediction": 1.2066666666666668,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        },
-        {
-            "prediction": 1.9466666666666668,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        },
-        {
-            "prediction": 1.2733333333333334,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        },
-        {
-            "prediction": 1.26,
-            "category": "Low",
-            "recommendation": "Immediate support required"
-        }
-    ],
-    "AccountKey": [
-        {
-            "prediction": 54.93333333333333,
+            "prediction": 53.17857142857143,
             "category": "Medium",
             "recommendation": "Monitor progress"
         },
         {
-            "prediction": 54.946666666666665,
+            "prediction": 2.000000000000007,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        },
+        {
+            "prediction": 3.000000000000007,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        },
+        {
+            "prediction": 4.000000000000007,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        },
+        {
+            "prediction": 53.17857142857143,
             "category": "Medium",
             "recommendation": "Monitor progress"
-        },
-        {
-            "prediction": 60.913333333333334,
-            "category": "Medium",
-            "recommendation": "Monitor progress"
-        },
-        {
-            "prediction": 58.13333333333333,
-            "category": "Medium",
-            "recommendation": "Monitor progress"
-        },
-        {
-            "prediction": 63.26,
-            "category": "Medium",
-            "recommendation": "Monitor progress"
-        }
-    ],
-    "Amount": [
-        {
-            "prediction": 28979.5078125,
-            "category": "High",
-            "recommendation": "Offer advanced opportunities"
-        },
-        {
-            "prediction": 28979.5078125,
-            "category": "High",
-            "recommendation": "Offer advanced opportunities"
-        },
-        {
-            "prediction": 3203.720703125,
-            "category": "High",
-            "recommendation": "Offer advanced opportunities"
-        },
-        {
-            "prediction": 3203.720703125,
-            "category": "High",
-            "recommendation": "Offer advanced opportunities"
-        },
-        {
-            "prediction": 2767.30078125,
-            "category": "High",
-            "recommendation": "Offer advanced opportunities"
         }
     ]
 }
