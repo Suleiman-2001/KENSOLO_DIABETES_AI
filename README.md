@@ -1,4 +1,4 @@
-# 🤖 KENSOLO-AI
+# 🤖 KENSOLO-AI Analytics Dashboard
 
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![Streamlit](https://img.shields.io/badge/streamlit-online-success)
@@ -6,31 +6,31 @@
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Streamlit-brightgreen?style=for-the-badge&logo=streamlit)](https://kensolo-ai-gatundu2001.streamlit.app/)
 
-KENSOLO-AI is a **Streamlit-based AI analytics dashboard** that automatically detects dataset issues, selects prediction targets, generates predictions and recommendations, visualizes graphs, and provides downloadable reports.
+KENSOLO-AI is a **Streamlit-based AI analytics dashboard** that helps users upload datasets (CSV/Excel), automatically detect dataset issues, generate insights, visualize graphs, and provide AI-powered predictions & recommendations — with downloadable reports.
 
 ---
 
 ## 🚀 Live Demo
 
-👉 **Open the app here:**  
+👉 **Try KENSOLO-AI here:**  
 https://kensolo-ai-gatundu2001.streamlit.app/
 
 ---
 
 ## ✨ Features
 
-- 🔍 **Dataset Issue Detection** – Automatically find potential issues in your dataset  
-- 🎯 **Auto Target Selection** – Identify the best prediction targets  
-- 📝 **NLP Summaries** – Generate clear textual summaries of your data  
+- 🔍 **Dataset Issue Detection** – Automatically finds missing values, duplicates, imbalance, and data quality issues  
+- 🎯 **Auto Target Selection** – Suggests the best prediction targets automatically  
+- 📝 **NLP Summaries** – Generates easy-to-read dataset summaries  
 - 📊 **Visualizations** – Auto-generated graphs for quick insights  
-- 🤖 **Predictions & Recommendations** – AI-powered decision support  
-- 💾 **Downloadable Reports** – Export results as JSON, CSV, and PDF  
+- 🤖 **Predictions & Recommendations** – AI-powered decision support and forecasting  
+- 💾 **Downloadable Reports** – Export results as **JSON, CSV, and PDF**  
 
 ---
 
 ## 🖼 Demo Screenshots
 
-Here’s a preview of the **KENSOLO AI Dashboard**:
+Preview of the **KENSOLO AI Dashboard**:
 
 ![Dashboard 1](dashboard.png)
 ![Dashboard 2](dashboard%20(2).png)
@@ -49,9 +49,9 @@ Here’s a preview of the **KENSOLO AI Dashboard**:
 
 ## ⚡ Quick Start
 
-### ✅ Run Locally
+### ✅ Run Locally (Windows / Mac / Linux)
 
-1. Clone the repository:
+#### 1) Clone the repository
 ```bash
 git clone https://github.com/Suleiman-2001/KENSOLO-AI.git
 cd KENSOLO-AI
