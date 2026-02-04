@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://suleiman-2001.github.io/KENSOLO-AI/sitemap.xml
