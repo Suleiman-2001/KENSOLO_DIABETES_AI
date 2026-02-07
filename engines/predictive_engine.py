@@ -1,6 +1,7 @@
 # engines/predictive_engine.py
 import numpy as np
 import pandas as pd
+import warnings
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, accuracy_score
@@ -12,32 +13,36 @@ from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier, Grad
 from sklearn.svm import SVR, SVC
 from sklearn.neighbors import KNeighborsClassifier
 from xgboost import XGBRegressor, XGBClassifier
-import warnings
 
 warnings.filterwarnings("ignore")
 
 
 def _prepare_features(df, target):
+    """
+    Splits features and target, identifies categorical and numerical columns,
+    and returns a ColumnTransformer for preprocessing.
+    Compatible with scikit-learn 1.2+ (sparse_output=False)
+    """
     y = df[target]
     X = df.drop(columns=[target])
 
     cat_cols = [c for c in X.columns if X[c].dtype == "object"]
-    num_cols = [c for c in X.columns if X[c].dtype != "object"]
+    num_cols = [c for c in X.columns if np.issubdtype(X[c].dtype, np.number)]
 
     preprocessor = ColumnTransformer(
         transformers=[
             ("num", "passthrough", num_cols),
-            ("cat", OneHotEncoder(handle_unknown="ignore"), cat_cols)
-        ]
+            ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), cat_cols)
+        ],
+        remainder='drop'
     )
     return X, y, preprocessor
 
 
 def run_predictive_model(df, targets_dict):
     """
-    Returns predictions dictionary.
-    - Keeps the best_model_pipeline in memory for SHAP
-    - Does NOT break JSON serialization
+    Runs predictive models on numerical and categorical targets.
+    Returns a results dictionary with in-memory pipelines for SHAP explanations.
     """
     results = {}
 
@@ -66,7 +71,7 @@ def run_predictive_model(df, targets_dict):
                 "XGBRegressor": XGBRegressor(n_estimators=150, random_state=42, verbosity=0)
             }
 
-            best_score = -999
+            best_score = -np.inf
             best_model = None
             best_name = None
             model_scores = {}
@@ -84,11 +89,10 @@ def run_predictive_model(df, targets_dict):
 
             sample_preds = best_model.predict(X.head(5))
 
-            # Store pipeline only in memory (not for JSON)
             results[target] = {
                 "task": "regression",
                 "best_model": best_name,
-                "best_model_pipeline": best_model,  # used in memory for Why engine
+                "best_model_pipeline": best_model,  # in-memory for SHAP
                 "r2_score": round(float(best_score), 4),
                 "sample_predictions": [float(x) for x in sample_preds],
                 "all_model_scores": model_scores
@@ -114,8 +118,9 @@ def run_predictive_model(df, targets_dict):
                 continue
 
             X, y, preprocessor = _prepare_features(clean_df, target)
+            stratify_param = y if len(np.unique(y)) > 1 else None
             X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.2, random_state=42, stratify=y
+                X, y, test_size=0.2, random_state=42, stratify=stratify_param
             )
 
             models = {
@@ -127,7 +132,7 @@ def run_predictive_model(df, targets_dict):
                 "SVC": SVC(probability=True)
             }
 
-            best_score = -999
+            best_score = -np.inf
             best_model = None
             best_name = None
             model_scores = {}

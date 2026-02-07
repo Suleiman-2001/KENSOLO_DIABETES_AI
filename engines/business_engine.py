@@ -20,7 +20,7 @@ def detect_business_columns(df):
                     return original
         return None
 
-    return {
+    detected = {
         "date_col": find_col(["date", "order_date", "timestamp", "datetime", "time"]),
         "sales_col": find_col(["sales", "revenue", "amount", "total", "total_sales"]),
         "profit_col": find_col(["profit", "margin"]),
@@ -32,6 +32,17 @@ def detect_business_columns(df):
         "order_id_col": find_col(["order_id", "invoice", "transaction", "receipt"]),
         "quantity_col": find_col(["qty", "quantity", "units"])
     }
+    
+    # Add warnings if key columns are missing
+    detected["warnings"] = []
+    if not detected["sales_col"]:
+        detected["warnings"].append("Sales column not detected")
+    if not detected["date_col"]:
+        detected["warnings"].append("Date column not detected")
+    if not detected["profit_col"]:
+        detected["warnings"].append("Profit column not detected")
+    
+    return detected
 
 def sales_trends(df, date_col, sales_col):
     if not date_col or not sales_col:
@@ -49,19 +60,13 @@ def sales_trends(df, date_col, sales_col):
     temp["hour"] = temp[date_col].dt.hour
     temp["weekday"] = temp[date_col].dt.day_name()
 
-    daily = temp.groupby("day")[sales_col].sum()
-    weekly = temp.groupby("week")[sales_col].sum()
-    monthly = temp.groupby("month")[sales_col].sum()
-
-    top_hours = temp.groupby("hour")[sales_col].sum().sort_values(ascending=False).head(5)
-    top_weekdays = temp.groupby("weekday")[sales_col].sum().sort_values(ascending=False).head(5)
-
+    # Return trends with safeguards
     return {
-        "daily_trend": daily.tail(30).to_dict(),
-        "weekly_trend": weekly.tail(12).to_dict(),
-        "monthly_trend": monthly.tail(12).to_dict(),
-        "top_hours_by_revenue": top_hours.to_dict(),
-        "top_weekdays_by_revenue": top_weekdays.to_dict(),
+        "daily_trend": temp.groupby("day")[sales_col].sum().tail(30).to_dict(),
+        "weekly_trend": temp.groupby("week")[sales_col].sum().tail(12).to_dict(),
+        "monthly_trend": temp.groupby("month")[sales_col].sum().tail(12).to_dict(),
+        "top_hours_by_revenue": temp.groupby("hour")[sales_col].sum().sort_values(ascending=False).head(5).to_dict(),
+        "top_weekdays_by_revenue": temp.groupby("weekday")[sales_col].sum().sort_values(ascending=False).head(5).to_dict(),
     }
 
 def top_products_categories(df, sales_col, product_col=None, category_col=None):
@@ -72,11 +77,9 @@ def top_products_categories(df, sales_col, product_col=None, category_col=None):
     if product_col and product_col in df.columns:
         top_products = df.groupby(product_col)[sales_col].sum().sort_values(ascending=False).head(10)
         result["top_products"] = top_products.to_dict()
-
     if category_col and category_col in df.columns:
         top_categories = df.groupby(category_col)[sales_col].sum().sort_values(ascending=False).head(10)
         result["top_categories"] = top_categories.to_dict()
-
     if not result:
         result["warning"] = "No product/category column found or insufficient data"
     return result

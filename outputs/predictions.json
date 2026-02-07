@@ -4,79 +4,79 @@
         "best_model": "XGBRegressor",
         "r2_score": 1.0,
         "sample_predictions": [
-            38405.9765625,
-            12489.7529296875,
-            21574.1640625,
-            9738.15234375,
-            111.33724975585938
+            38406.54296875,
+            12485.8173828125,
+            21570.40625,
+            9744.3095703125,
+            112.25708770751953
         ],
         "all_model_scores": {
-            "LinearRegression": 0.9363,
+            "LinearRegression": 0.9999,
             "RandomForestRegressor": 1.0,
             "GradientBoostingRegressor": 1.0,
             "Lasso": 0.9999,
-            "Ridge": 0.9308,
+            "Ridge": 0.9999,
             "XGBRegressor": 1.0
         }
     },
     "DateKey": {
         "task": "regression",
-        "best_model": "GradientBoostingRegressor",
+        "best_model": "LinearRegression",
         "r2_score": 1.0,
         "sample_predictions": [
-            20080600.984118722,
-            20060601.000629935,
-            20070200.998204432,
-            20060301.00186906,
-            20050701.013672393
+            20080601.0,
+            20060601.0,
+            20070201.0,
+            20060301.0,
+            20050701.0
         ],
         "all_model_scores": {
-            "LinearRegression": 0.9336,
+            "LinearRegression": 1.0,
             "RandomForestRegressor": 1.0,
             "GradientBoostingRegressor": 1.0,
             "Lasso": 0.9999,
-            "Ridge": 0.9307,
+            "Ridge": 0.9999,
             "XGBRegressor": 1.0
         }
     },
     "OrganizationKey": {
         "task": "regression",
         "best_model": "XGBRegressor",
-        "r2_score": 0.9642,
+        "r2_score": 0.9634,
         "sample_predictions": [
-            3.604977607727051,
-            3.3464438915252686,
-            12.098661422729492,
-            6.057678699493408,
-            2.980461359024048
+            3.2921462059020996,
+            3.3324296474456787,
+            11.845991134643555,
+            5.973486423492432,
+            3.0766518115997314
         ],
         "all_model_scores": {
-            "LinearRegression": 0.1582,
+            "LinearRegression": 0.9132,
             "RandomForestRegressor": 0.8824,
             "GradientBoostingRegressor": 0.6871,
             "Lasso": 0.1453,
-            "Ridge": 0.1453,
-            "XGBRegressor": 0.9642
+            "Ridge": 0.8503,
+            "XGBRegressor": 0.9634
         }
     },
     "DepartmentGroupKey": {
         "task": "regression",
-        "best_model": "RandomForestRegressor",
-        "r2_score": 0.5383,
+        "best_model": "XGBRegressor",
+        "r2_score": 0.5422,
         "sample_predictions": [
-            6.0,
-            7.0,
-            4.866666666666666,
-            6.0,
-            6.0
+            6.37391471862793,
+            7.064377307891846,
+            4.844271183013916,
+            6.921769618988037,
+            5.8952107429504395
         ],
         "all_model_scores": {
-            "LinearRegression": 0.1993,
+            "LinearRegression": 0.2703,
             "RandomForestRegressor": 0.5383,
-            "GradientBoostingRegressor": 0.4427,
+            "GradientBoostingRegressor": 0.4428,
             "Lasso": 0.1872,
-            "Ridge": 0.1878,
-            "XGBRegressor": 0.5368
+            "Ridge": 0.2255,
+            "XGBRegressor": 0.5422
         }
     },
     "ScenarioKey": {
@@ -91,12 +91,12 @@
             1.1933333333333334
         ],
         "all_model_scores": {
-            "LinearRegression": 0.2097,
+            "LinearRegression": 0.3015,
             "RandomForestRegressor": 0.7657,
             "GradientBoostingRegressor": 0.6825,
             "Lasso": 0.2013,
-            "Ridge": 0.2097,
-            "XGBRegressor": 0.6307
+            "Ridge": 0.3012,
+            "XGBRegressor": 0.6297
         }
     },
     "AccountKey": {
@@ -111,12 +111,12 @@
             93.16
         ],
         "all_model_scores": {
-            "LinearRegression": 0.2123,
+            "LinearRegression": 0.2137,
             "RandomForestRegressor": 0.7688,
             "GradientBoostingRegressor": 0.7582,
             "Lasso": 0.2114,
-            "Ridge": 0.0534,
-            "XGBRegressor": 0.7441
+            "Ridge": 0.2137,
+            "XGBRegressor": 0.7457
         }
     },
     "Amount": {
@@ -131,11 +131,11 @@
             76190.1875
         ],
         "all_model_scores": {
-            "LinearRegression": 0.0597,
-            "RandomForestRegressor": 0.4557,
+            "LinearRegression": 0.0581,
+            "RandomForestRegressor": 0.4542,
             "GradientBoostingRegressor": 0.4872,
             "Lasso": 0.0526,
-            "Ridge": 0.059,
+            "Ridge": 0.054,
             "XGBRegressor": 0.625
         }
     }

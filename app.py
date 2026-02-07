@@ -20,7 +20,9 @@ def set_background(image_path, darkness=0.6):
     Set background image with dark overlay in Streamlit.
     darkness: float (0 to 1), higher = darker.
     """
-    image_path = image_path.replace("\\", "/")  # fix slashes for Windows
+    # Fix slashes for Windows and GitHub deployment
+    image_path = os.path.join(os.getcwd(), image_path)
+    image_path = image_path.replace("\\", "/")
     if os.path.exists(image_path):
         with open(image_path, "rb") as f:
             data = f.read()
@@ -38,11 +40,11 @@ def set_background(image_path, darkness=0.6):
             unsafe_allow_html=True
         )
     else:
-        st.warning(f"Background image not found at {image_path}")
+        st.warning(f"Background image not found at {image_path}. Make sure the file exists.")
 
 # Absolute path to your image
 image_path = "images/1687972706509..jpg"
-set_background(image_path, darkness=0.9)  # increase darkness for better readability
+set_background(image_path, darkness=0.9)
 
 # ----------------------------
 # ----------------------------
@@ -51,30 +53,23 @@ set_background(image_path, darkness=0.9)  # increase darkness for better readabi
 st.markdown(
     """
     <style>
-    /* Make headers bold, larger, and white */
     h1, h2, h3, h4, h5, h6, .stHeader {
         font-weight: 900 !important;
-        color: #FFFFFF !important;  /* White headers */
-        text-shadow: 1px 1px 3px rgba(0,0,0,0.7);  /* subtle shadow for contrast */
+        color: #FFFFFF !important;
+        text-shadow: 1px 1px 3px rgba(0,0,0,0.7);
     }
-
-    /* JSON and info boxes */
     .stJson, .stText, .stMarkdown {
         font-weight: 700 !important;
-        color: #FFFFFF !important;  /* White text */
-        background-color: rgba(0,0,0,0.5) !important; /* semi-transparent dark background */
+        color: #FFFFFF !important;
+        background-color: rgba(0,0,0,0.5) !important;
         padding: 5px;
         border-radius: 5px;
     }
-
-    /* Buttons */
     .stButton>button {
         font-weight: 700 !important;
-        background-color: #1E90FF !important;  /* Blue buttons */
-        color: #FFFFFF !important;  /* White text */
+        background-color: #1E90FF !important;
+        color: #FFFFFF !important;
     }
-
-    /* Selectbox, file uploader, checkbox labels */
     div[role="listbox"], .stFileUploader, label, span {
         color: #FFFFFF !important;
     }
@@ -102,7 +97,6 @@ industry_value = None if selected_industry == "None" else selected_industry
 uploaded_file = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx"])
 
 if uploaded_file:
-    # Load CSV/Excel safely
     try:
         if uploaded_file.name.endswith(".csv"):
             try:
@@ -131,8 +125,27 @@ if uploaded_file:
             st.info(f"Removed constant columns: {constant_cols}")
         st.success("Autofix applied successfully!")
 
-    # Column types detection
     column_types = {col: ("text" if df[col].dtype == "object" else "numerical") for col in df.columns}
+
+    # ----------------------------
+    # Add Power BI Export function
+    # ----------------------------
+    def export_for_powerbi(df, output, industry_value):
+        """
+        Save CSVs for Power BI analysis:
+        - Original data
+        - Predictions
+        - Recommendations
+        """
+        os.makedirs("outputs/powerbi", exist_ok=True)
+        df.to_csv("outputs/powerbi/df_for_powerbi.csv", index=False)
+        predictions = output.get("predictions") or {}
+        if predictions:
+            pd.DataFrame(predictions).to_csv("outputs/powerbi/predictions_for_powerbi.csv")
+        recommendations = output.get("recommendations") or {}
+        if recommendations:
+            pd.DataFrame(recommendations).to_csv("outputs/powerbi/recommendations_for_powerbi.csv")
+        st.success("✅ Power BI export completed in outputs/powerbi/")
 
     # Run AI Analysis (Manual)
     if st.button("Run AI Analysis"):
