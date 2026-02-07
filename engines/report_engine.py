@@ -1,5 +1,6 @@
 import os
 from fpdf import FPDF
+import matplotlib.pyplot as plt
 
 # ----------------------------
 # Directories
@@ -16,6 +17,9 @@ def generate_pdf_report(output):
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
 
+    # ----------------------------
+    # Safe font
+    # ----------------------------
     FONT_NAME = "Arial"
     FONT_SIZE_TITLE = 14
     FONT_SIZE_BODY = 12
@@ -47,20 +51,25 @@ def generate_pdf_report(output):
     def add_section(title, content):
         pdf.add_page()
         pdf.set_font(FONT_NAME, "", FONT_SIZE_TITLE)
-        for line in wrap_text(safe_text(title)):
+        title_safe = safe_text(title)
+        for line in wrap_text(title_safe):
             pdf.multi_cell(pdf.w - 20, 8, line)
         pdf.ln(4)
 
         pdf.set_font(FONT_NAME, "", FONT_SIZE_BODY)
         if isinstance(content, dict) and content:
             for k, v in content.items():
-                for piece in wrap_text(safe_text(f"{k}: {v}")):
+                line_safe = safe_text(f"{k}: {v}")
+                for piece in wrap_text(line_safe):
                     pdf.multi_cell(pdf.w - 20, 6, piece)
         elif isinstance(content, str) and content.strip():
-            for piece in wrap_text(safe_text(content)):
+            line_safe = safe_text(content)
+            for piece in wrap_text(line_safe):
                 pdf.multi_cell(pdf.w - 20, 6, piece)
-        else:
+        elif content is None or (isinstance(content, (list, dict)) and len(content) == 0):
             pdf.multi_cell(pdf.w - 20, 6, "No data available.")
+        else:
+            pdf.multi_cell(pdf.w - 20, 6, safe_text(content))
 
     # ----------------------------
     # Add main sections
@@ -70,21 +79,46 @@ def generate_pdf_report(output):
     add_section("Recommendations", output.get("recommendations", {}))
     add_section("Self Critic", output.get("self_critic", {}))
 
+    # -------------------------------------------------
+    # ✅ NEW SECTION — Decision Intelligence
+    # -------------------------------------------------
+    add_section(
+        "Decision Intelligence",
+        output.get("decision_intelligence", {})
+    )
+
     # ----------------------------
-    # Add graphs from saved PNGs
+    # Add graphs with progress
     # ----------------------------
-    graph_paths = output.get("graphs", [])
-    if graph_paths:
-        for i, path in enumerate(graph_paths, start=1):
-            if os.path.exists(path):
-                pdf.add_page()
-                pdf.image(path, x=10, y=20, w=pdf.w - 20)
-                print(f"📊 Added graph {i}: {path}")
-            else:
-                print(f"⚠️ Graph file not found: {path}")
-        print(f"✅ All graphs embedded into PDF.")
+    graphs = output.get("graphs", [])
+    total_graphs = len(graphs)
+
+    if graphs:
+        for i, graph_func in enumerate(graphs, start=1):
+            print(f"📊 Generating graph {i}/{total_graphs}...")
+            plt.figure()
+            try:
+                graph_func()
+            except Exception as e:
+                print(f"⚠️ Error creating graph {i}: {e}")
+                plt.close()
+                continue
+
+            # Save graph to PNG
+            graph_path = os.path.join(GRAPH_DIR, f"graph_{i}.png")
+            plt.savefig(graph_path, bbox_inches="tight")
+            plt.close()
+
+            # Add graph to PDF
+            pdf.add_page()
+            try:
+                pdf.image(graph_path, x=10, y=20, w=pdf.w - 20)
+            except Exception as e:
+                print(f"⚠️ Could not add graph {i} to PDF: {e}")
+
+        print(f"✅ Graphs saved in folder: {GRAPH_DIR}")
     else:
-        print("ℹ️ No graphs to embed in PDF.")
+        print("ℹ️ No graphs to add.")
 
     # ----------------------------
     # Save PDF

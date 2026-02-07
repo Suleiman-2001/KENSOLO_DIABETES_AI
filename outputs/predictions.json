@@ -1,22 +1,142 @@
 {
-    "CurrencyKey": {
+    "FinanceKey": {
         "task": "regression",
-        "best_model": "LinearRegression",
-        "r2_score": -0.0007,
+        "best_model": "XGBRegressor",
+        "r2_score": 1.0,
         "sample_predictions": [
-            53.17857142857143,
-            2.000000000000007,
-            3.000000000000007,
-            4.000000000000007,
-            53.17857142857143
+            38405.9765625,
+            12489.7529296875,
+            21574.1640625,
+            9738.15234375,
+            111.33724975585938
         ],
         "all_model_scores": {
-            "LinearRegression": -0.0007,
-            "RandomForestRegressor": -0.0075,
-            "GradientBoostingRegressor": -0.0016,
-            "Lasso": -0.0007,
-            "Ridge": -0.0007,
-            "XGBRegressor": -0.0024
+            "LinearRegression": 0.9363,
+            "RandomForestRegressor": 1.0,
+            "GradientBoostingRegressor": 1.0,
+            "Lasso": 0.9999,
+            "Ridge": 0.9308,
+            "XGBRegressor": 1.0
+        }
+    },
+    "DateKey": {
+        "task": "regression",
+        "best_model": "GradientBoostingRegressor",
+        "r2_score": 1.0,
+        "sample_predictions": [
+            20080600.984118722,
+            20060601.000629935,
+            20070200.998204432,
+            20060301.00186906,
+            20050701.013672393
+        ],
+        "all_model_scores": {
+            "LinearRegression": 0.9336,
+            "RandomForestRegressor": 1.0,
+            "GradientBoostingRegressor": 1.0,
+            "Lasso": 0.9999,
+            "Ridge": 0.9307,
+            "XGBRegressor": 1.0
+        }
+    },
+    "OrganizationKey": {
+        "task": "regression",
+        "best_model": "XGBRegressor",
+        "r2_score": 0.9642,
+        "sample_predictions": [
+            3.604977607727051,
+            3.3464438915252686,
+            12.098661422729492,
+            6.057678699493408,
+            2.980461359024048
+        ],
+        "all_model_scores": {
+            "LinearRegression": 0.1582,
+            "RandomForestRegressor": 0.8824,
+            "GradientBoostingRegressor": 0.6871,
+            "Lasso": 0.1453,
+            "Ridge": 0.1453,
+            "XGBRegressor": 0.9642
+        }
+    },
+    "DepartmentGroupKey": {
+        "task": "regression",
+        "best_model": "RandomForestRegressor",
+        "r2_score": 0.5383,
+        "sample_predictions": [
+            6.0,
+            7.0,
+            4.866666666666666,
+            6.0,
+            6.0
+        ],
+        "all_model_scores": {
+            "LinearRegression": 0.1993,
+            "RandomForestRegressor": 0.5383,
+            "GradientBoostingRegressor": 0.4427,
+            "Lasso": 0.1872,
+            "Ridge": 0.1878,
+            "XGBRegressor": 0.5368
+        }
+    },
+    "ScenarioKey": {
+        "task": "regression",
+        "best_model": "RandomForestRegressor",
+        "r2_score": 0.7657,
+        "sample_predictions": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.1933333333333334
+        ],
+        "all_model_scores": {
+            "LinearRegression": 0.2097,
+            "RandomForestRegressor": 0.7657,
+            "GradientBoostingRegressor": 0.6825,
+            "Lasso": 0.2013,
+            "Ridge": 0.2097,
+            "XGBRegressor": 0.6307
+        }
+    },
+    "AccountKey": {
+        "task": "regression",
+        "best_model": "RandomForestRegressor",
+        "r2_score": 0.7688,
+        "sample_predictions": [
+            100.7,
+            34.94,
+            77.56,
+            77.29333333333334,
+            93.16
+        ],
+        "all_model_scores": {
+            "LinearRegression": 0.2123,
+            "RandomForestRegressor": 0.7688,
+            "GradientBoostingRegressor": 0.7582,
+            "Lasso": 0.2114,
+            "Ridge": 0.0534,
+            "XGBRegressor": 0.7441
+        }
+    },
+    "Amount": {
+        "task": "regression",
+        "best_model": "XGBRegressor",
+        "r2_score": 0.625,
+        "sample_predictions": [
+            397737.9375,
+            31602.505859375,
+            -106.62000274658203,
+            -2015.3779296875,
+            76190.1875
+        ],
+        "all_model_scores": {
+            "LinearRegression": 0.0597,
+            "RandomForestRegressor": 0.4557,
+            "GradientBoostingRegressor": 0.4872,
+            "Lasso": 0.0526,
+            "Ridge": 0.059,
+            "XGBRegressor": 0.625
         }
     }
 }

@@ -1,29 +1,191 @@
 {
-    "CurrencyKey": [
+    "FinanceKey": [
         {
-            "prediction": 53.17857142857143,
-            "category": "Medium",
-            "recommendation": "Monitor progress"
+            "prediction": 38405.9765625,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
         },
         {
-            "prediction": 2.000000000000007,
+            "prediction": 12489.7529296875,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": 21574.1640625,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": 9738.15234375,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": 111.33724975585938,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        }
+    ],
+    "DateKey": [
+        {
+            "prediction": 20080600.984118722,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": 20060601.000629935,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": 20070200.998204432,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": 20060301.00186906,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": 20050701.013672393,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        }
+    ],
+    "OrganizationKey": [
+        {
+            "prediction": 3.604977607727051,
             "category": "Low",
             "recommendation": "Immediate support required"
         },
         {
-            "prediction": 3.000000000000007,
+            "prediction": 3.3464438915252686,
             "category": "Low",
             "recommendation": "Immediate support required"
         },
         {
-            "prediction": 4.000000000000007,
+            "prediction": 12.098661422729492,
             "category": "Low",
             "recommendation": "Immediate support required"
         },
         {
-            "prediction": 53.17857142857143,
-            "category": "Medium",
-            "recommendation": "Monitor progress"
+            "prediction": 6.057678699493408,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        },
+        {
+            "prediction": 2.980461359024048,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        }
+    ],
+    "DepartmentGroupKey": [
+        {
+            "prediction": 6.0,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        },
+        {
+            "prediction": 7.0,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        },
+        {
+            "prediction": 4.866666666666666,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        },
+        {
+            "prediction": 6.0,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        },
+        {
+            "prediction": 6.0,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        }
+    ],
+    "ScenarioKey": [
+        {
+            "prediction": 1.0,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        },
+        {
+            "prediction": 1.0,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        },
+        {
+            "prediction": 1.0,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        },
+        {
+            "prediction": 1.0,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        },
+        {
+            "prediction": 1.1933333333333334,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        }
+    ],
+    "AccountKey": [
+        {
+            "prediction": 100.7,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": 34.94,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        },
+        {
+            "prediction": 77.56,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": 77.29333333333334,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": 93.16,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        }
+    ],
+    "Amount": [
+        {
+            "prediction": 397737.9375,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": 31602.505859375,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
+        },
+        {
+            "prediction": -106.62000274658203,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        },
+        {
+            "prediction": -2015.3779296875,
+            "category": "Low",
+            "recommendation": "Immediate support required"
+        },
+        {
+            "prediction": 76190.1875,
+            "category": "High",
+            "recommendation": "Offer advanced opportunities"
         }
     ]
 }
