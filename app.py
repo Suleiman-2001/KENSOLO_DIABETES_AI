@@ -41,7 +41,7 @@ def set_background(image_path, darkness=0.6):
         st.warning(f"Background image not found at {image_path}")
 
 # Absolute path to your image
-image_path = "F:/ARTIFICIAL INTELLIGENCE/AI_Data_Analytics/images/1687972706509..jpg"
+image_path = "images/1687972706509..jpg"
 set_background(image_path, darkness=0.9)  # increase darkness for better readability
 
 # ----------------------------
