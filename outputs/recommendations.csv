@@ -26,8 +26,8 @@ ScenarioKey,3,1.0,Low,Immediate support required
 ScenarioKey,4,1.1933333333333334,Low,Immediate support required
 AccountKey,0,100.7,High,Offer advanced opportunities
 AccountKey,1,34.94,Low,Immediate support required
-AccountKey,2,77.56,Medium,Monitor progress
-AccountKey,3,77.29333333333334,Medium,Monitor progress
+AccountKey,2,77.56,High,Offer advanced opportunities
+AccountKey,3,77.29333333333334,High,Offer advanced opportunities
 AccountKey,4,93.16,High,Offer advanced opportunities
 Amount,0,397737.9375,High,Offer advanced opportunities
 Amount,1,31602.505859375,High,Offer advanced opportunities

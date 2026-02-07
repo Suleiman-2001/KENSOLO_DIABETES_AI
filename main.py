@@ -6,6 +6,11 @@ from tkinter.filedialog import askopenfilename
 from core.router import route_to_engines
 
 # ----------------------------
+# Import the new export engine
+# ----------------------------
+from engines import export_engine  # <-- new line
+
+# ----------------------------
 # Suppress unnecessary warnings
 # ----------------------------
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -82,7 +87,16 @@ def main():
         print(f"{k}: {v}")
 
     # ----------------------------
-    # 6️⃣ Final confirmation
+    # 6️⃣ Auto-export to Excel
+    # ----------------------------
+    try:
+        excel_path = export_engine.save_to_excel(output)
+        print(f"\n💹 Excel report saved at: {excel_path}")
+    except Exception as e:
+        print(f"❌ Failed to export Excel report: {e}")
+
+    # ----------------------------
+    # 7️⃣ Final confirmation
     # ----------------------------
     print("\n🚀 KENSOLO AI processing complete!")
     print(f"📄 PDF report saved at: {output.get('report_path')}")
