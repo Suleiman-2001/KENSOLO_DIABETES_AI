@@ -64,6 +64,39 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+# ----------------------------
+# Custom style for Talk-to-Your-Data AI response
+# ----------------------------
+st.markdown(
+    """
+    <style>
+    /* Force AI response text to be black */
+    .stInfo, .stText, .stMarkdown {
+        color: #000000 !important;  /* black */
+        background-color: rgba(255, 255, 255, 0.2) !important;  /* optional light background for contrast */
+        padding: 5px;
+        border-radius: 5px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+def display_ai_answer(answer):
+    st.markdown(
+        f"""
+        <div style="
+            background-color: rgba(255,255,255,0.9);
+            color: black;
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: 600;
+        ">
+            {answer}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 
 # ----------------------------
 # Streamlit Page Config
@@ -151,7 +184,7 @@ if TALK_ENABLED:
             answer = talk_to_data_ai(df, query=user_question)  # ✅ updated 'question' -> 'query'
             st.info(answer)
 else:
-    st.info("Talk-to-Your-Data AI module not installed. Skipping.")
+    display_ai_answer("Talk-to-Your-Data AI module not installed. Skipping.")
 
     # ----------------------------
     # Run AI Analysis (Manual)
