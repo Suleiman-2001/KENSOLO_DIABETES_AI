@@ -16,71 +16,43 @@ from core.router import route_to_engines
 # Dark Blue Background (No Image)
 # ----------------------------
 def set_background(bg_color="#0B3D91"):  # dark blue
-    """
-    Set a solid dark blue background in Streamlit.
-    """
     st.markdown(
         f"""
         <style>
         .stApp {{
             background-color: {bg_color};
         }}
+        h1, h2, h3, h4, h5, h6, .stHeader {{
+            font-weight: 900 !important;
+            color: #FFFFFF !important;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.7);
+        }}
+        .stText, .stInfo, .stMarkdown, .stJson {{
+            font-weight: 700 !important;
+            color: #000000 !important;  /* black text */
+            background-color: rgba(255,255,255,0.2) !important;
+            padding: 8px;
+            border-radius: 6px;
+            overflow-x: auto;
+        }}
+        .stButton>button {{
+            font-weight: 700 !important;
+            background-color: #1E90FF !important;
+            color: #FFFFFF !important;
+        }}
+        div[role="listbox"], .stFileUploader, label, span {{
+            color: #FFFFFF !important;
+        }}
         </style>
         """,
         unsafe_allow_html=True
     )
 
-# Apply dark blue background
 set_background()
 
 # ----------------------------
-# Enhance visibility of analytics content for dark blue background
+# Display AI Answers
 # ----------------------------
-st.markdown(
-    """
-    <style>
-    h1, h2, h3, h4, h5, h6, .stHeader {
-        font-weight: 900 !important;
-        color: #FFFFFF !important;
-        text-shadow: 1px 1px 3px rgba(0,0,0,0.7);
-    }
-    .stJson, .stText, .stMarkdown, .stInfo {
-        font-weight: 700 !important;
-        color: #000000 !important;  /* black text for better visibility */
-        background-color: rgba(255,255,255,0.8) !important;  /* light background */
-        padding: 8px;
-        border-radius: 6px;
-        overflow-x: auto;
-    }
-    .stButton>button {
-        font-weight: 700 !important;
-        background-color: #1E90FF !important;
-        color: #FFFFFF !important;
-    }
-    div[role="listbox"], .stFileUploader, label, span {
-        color: #FFFFFF !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-# ----------------------------
-# Custom style for Talk-to-Your-Data AI response
-# ----------------------------
-st.markdown(
-    """
-    <style>
-    /* Force AI response text to be black */
-    .stInfo, .stText, .stMarkdown {
-        color: #000000 !important;  /* black */
-        background-color: rgba(255, 255, 255, 0.2) !important;  /* optional light background for contrast */
-        padding: 5px;
-        border-radius: 5px;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
 def display_ai_answer(answer):
     st.markdown(
         f"""
@@ -96,7 +68,6 @@ def display_ai_answer(answer):
         """,
         unsafe_allow_html=True
     )
-
 
 # ----------------------------
 # Streamlit Page Config
@@ -130,9 +101,10 @@ if uploaded_file:
         st.error(f"Failed to load file: {e}")
         st.stop()
 
-    # Autofix toggle
+    # ----------------------------
+    # Autofix
+    # ----------------------------
     autofix = st.checkbox("Enable Autofix Mode (auto-fill missing / remove constant columns)")
-
     if autofix:
         for col in df.columns:
             if df[col].dtype == "object":
@@ -148,43 +120,67 @@ if uploaded_file:
     column_types = {col: ("text" if df[col].dtype == "object" else "numerical") for col in df.columns}
 
     # ----------------------------
-    # Power BI Export Function
+    # Power BI Export (Upgraded)
     # ----------------------------
     def export_for_powerbi(df, output, industry_value):
-        os.makedirs("outputs/powerbi", exist_ok=True)
-        df.to_csv("outputs/powerbi/df_for_powerbi.csv", index=False)
+        """
+        Export AI outputs to CSV files for Power BI.
+        Automatically creates 'outputs/powerbi' folder.
+        Converts JSON outputs to CSV if needed.
+        """
+        powerbi_folder = "outputs/powerbi"
+        os.makedirs(powerbi_folder, exist_ok=True)
 
+        # 1️⃣ Export raw dataframe
+        df.to_csv(os.path.join(powerbi_folder, "df_for_powerbi.csv"), index=False)
+
+        # 2️⃣ Export predictions
         predictions = output.get("predictions") or {}
         if predictions:
             all_preds = {}
             for target, info in predictions.items():
-                all_preds[target] = info.get("sample_predictions", [])
-            pd.DataFrame(all_preds).to_csv("outputs/powerbi/predictions_for_powerbi.csv", index=False)
+                sample_preds = info.get("sample_predictions")
+                if sample_preds:
+                    # Flatten list of dicts to dataframe
+                    all_preds[target] = pd.DataFrame(sample_preds)
+            if all_preds:
+                for target, df_preds in all_preds.items():
+                    df_preds.to_csv(os.path.join(powerbi_folder, f"predictions_{target}.csv"), index=False)
 
+        # 3️⃣ Export recommendations
         recommendations = output.get("recommendations") or {}
         if recommendations:
-            pd.DataFrame(recommendations).to_csv("outputs/powerbi/recommendations_for_powerbi.csv", index=False)
+            for key, rec_list in recommendations.items():
+                if rec_list:
+                    pd.DataFrame(rec_list).to_csv(os.path.join(powerbi_folder, f"recommendations_{key}.csv"), index=False)
 
-        st.success("✅ Power BI export completed in outputs/powerbi/")
+        # 4️⃣ Export adaptive insights (if exist)
+        adaptive_insights = output.get("adaptive_insights") or {}
+        if adaptive_insights:
+            pd.DataFrame.from_dict(adaptive_insights, orient="index").to_csv(
+                os.path.join(powerbi_folder, "adaptive_insights.csv")
+            )
 
-  # ----------------------------
-# Talk-to-Your-Data AI
-# ----------------------------
-try:
-    from engines.talk_to_data import talk_to_data_ai
-    TALK_ENABLED = True
-except ModuleNotFoundError:
-    TALK_ENABLED = False
+        st.success(f"✅ Power BI export completed! CSVs saved in '{powerbi_folder}'")
 
-if TALK_ENABLED:
-    st.subheader("💬 Talk to Your Data AI")
-    user_question = st.text_input("Ask a question about your data (e.g., 'Top 5 Amount outliers')")
-    if st.button("Ask AI") and user_question:
-        with st.spinner("🤖 Generating answer..."):
-            answer = talk_to_data_ai(df, query=user_question)  # ✅ updated 'question' -> 'query'
-            st.info(answer)
-else:
-    display_ai_answer("Talk-to-Your-Data AI module not installed. Skipping.")
+    # ----------------------------
+    # Talk-to-Your-Data AI
+    # ----------------------------
+    try:
+        from engines.talk_to_data import talk_to_data_ai
+        TALK_ENABLED = True
+    except ModuleNotFoundError:
+        TALK_ENABLED = False
+
+    if TALK_ENABLED:
+        st.subheader("💬 Talk to Your Data AI")
+        user_question = st.text_input("Ask a question about your data (e.g., 'Top 5 Amount outliers')")
+        if st.button("Ask AI") and user_question:
+            with st.spinner("🤖 Generating answer..."):
+                answer = talk_to_data_ai(df, query=user_question)
+                display_ai_answer(answer)
+    else:
+        display_ai_answer("Talk-to-Your-Data AI module not installed. Skipping.")
 
     # ----------------------------
     # Run AI Analysis (Manual)
