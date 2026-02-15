@@ -60,9 +60,23 @@ def talk_to_data_ai(df: pd.DataFrame, query: str):
     # -----------------------------
     # MISSING VALUES ANALYSIS
     # -----------------------------
-    if "missing" in query_lower:
+    if "missing" in query_lower or "null" in query_lower:
         missing_counts = df.isnull().sum().sort_values(ascending=False)
-        return missing_counts[missing_counts > 0].to_dict()
+        missing_cols = missing_counts[missing_counts > 0]
+        if missing_cols.empty:
+            return "✅ No missing values detected in any column."
+        else:
+            return missing_cols.to_dict()
+
+    # -----------------------------
+    # CONSTANT COLUMNS
+    # -----------------------------
+    if "constant" in query_lower:
+        constant_cols = [c for c in df.columns if df[c].nunique() <= 1]
+        if constant_cols:
+            return {"constant_columns": constant_cols}
+        else:
+            return "✅ No constant columns detected."
 
     # -----------------------------
     # OUTLIERS / EXTREME VALUES
@@ -118,7 +132,28 @@ def talk_to_data_ai(df: pd.DataFrame, query: str):
     # -----------------------------
     if "correlation" in query_lower:
         numeric_df = df.select_dtypes(include=np.number)
+        if numeric_df.shape[1] < 2:
+            return "Not enough numeric columns to calculate correlation."
         return numeric_df.corr().to_dict()
+
+    # -----------------------------
+    # COLUMN-SPECIFIC INSIGHTS
+    # -----------------------------
+    col = find_column_from_query(df, query)
+    if col:
+        info = {
+            "dtype": str(df[col].dtype),
+            "missing_values": int(df[col].isnull().sum()),
+            "unique_values": df[col].nunique()
+        }
+        if np.issubdtype(df[col].dtype, np.number):
+            info.update({
+                "mean": float(df[col].mean()),
+                "std": float(df[col].std()),
+                "min": float(df[col].min()),
+                "max": float(df[col].max())
+            })
+        return {col: info}
 
     # -----------------------------
     # FALLBACK
@@ -126,5 +161,5 @@ def talk_to_data_ai(df: pd.DataFrame, query: str):
     return (
         "🤖 I understood your query but could not match a specific rule. "
         "Try asking about: rows, columns, summary, quality, missing values, "
-        "outliers, average, total, unique values, or correlation."
+        "constant columns, outliers, average, total, unique values, correlation, or any specific column."
     )

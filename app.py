@@ -13,42 +13,28 @@ warnings.filterwarnings("ignore")  # suppress warnings
 from core.router import route_to_engines
 
 # ----------------------------
-# Background Image with dark overlay
+# Dark Blue Background (No Image)
 # ----------------------------
-def set_background(image_path, darkness=0.6):
+def set_background(bg_color="#0B3D91"):  # dark blue
     """
-    Set background image with dark overlay in Streamlit.
-    darkness: float (0 to 1), higher = darker.
+    Set a solid dark blue background in Streamlit.
     """
-    # Fix slashes for Windows and GitHub deployment
-    image_path = os.path.join(os.getcwd(), image_path)
-    image_path = image_path.replace("\\", "/")
-    if os.path.exists(image_path):
-        with open(image_path, "rb") as f:
-            data = f.read()
-        encoded = base64.b64encode(data).decode()
-        st.markdown(
-            f"""
-            <style>
-            .stApp {{
-                background: linear-gradient(rgba(0,0,0,{darkness}), rgba(0,0,0,{darkness})),
-                            url("data:image/jpg;base64,{encoded}") no-repeat center center fixed;
-                background-size: cover;
-            }}
-            </style>
-            """,
-            unsafe_allow_html=True
-        )
-    else:
-        st.warning(f"Background image not found at {image_path}. Make sure the file exists.")
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{
+            background-color: {bg_color};
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
-# Absolute path to your image
-image_path = "images/1687972706509..jpg"
-set_background(image_path, darkness=0.9)
+# Apply dark blue background
+set_background()
 
 # ----------------------------
-# ----------------------------
-# Enhance visibility of analytics content
+# Enhance visibility of analytics content for dark blue background
 # ----------------------------
 st.markdown(
     """
@@ -58,12 +44,13 @@ st.markdown(
         color: #FFFFFF !important;
         text-shadow: 1px 1px 3px rgba(0,0,0,0.7);
     }
-    .stJson, .stText, .stMarkdown {
+    .stJson, .stText, .stMarkdown, .stInfo {
         font-weight: 700 !important;
-        color: #FFFFFF !important;
-        background-color: rgba(0,0,0,0.5) !important;
-        padding: 5px;
-        border-radius: 5px;
+        color: #000000 !important;  /* black text for better visibility */
+        background-color: rgba(255,255,255,0.8) !important;  /* light background */
+        padding: 8px;
+        border-radius: 6px;
+        overflow-x: auto;
     }
     .stButton>button {
         font-weight: 700 !important;
@@ -128,31 +115,54 @@ if uploaded_file:
     column_types = {col: ("text" if df[col].dtype == "object" else "numerical") for col in df.columns}
 
     # ----------------------------
-    # Add Power BI Export function
+    # Power BI Export Function
     # ----------------------------
     def export_for_powerbi(df, output, industry_value):
-        """
-        Save CSVs for Power BI analysis:
-        - Original data
-        - Predictions
-        - Recommendations
-        """
         os.makedirs("outputs/powerbi", exist_ok=True)
         df.to_csv("outputs/powerbi/df_for_powerbi.csv", index=False)
+
         predictions = output.get("predictions") or {}
         if predictions:
-            pd.DataFrame(predictions).to_csv("outputs/powerbi/predictions_for_powerbi.csv")
+            all_preds = {}
+            for target, info in predictions.items():
+                all_preds[target] = info.get("sample_predictions", [])
+            pd.DataFrame(all_preds).to_csv("outputs/powerbi/predictions_for_powerbi.csv", index=False)
+
         recommendations = output.get("recommendations") or {}
         if recommendations:
-            pd.DataFrame(recommendations).to_csv("outputs/powerbi/recommendations_for_powerbi.csv")
+            pd.DataFrame(recommendations).to_csv("outputs/powerbi/recommendations_for_powerbi.csv", index=False)
+
         st.success("✅ Power BI export completed in outputs/powerbi/")
 
+  # ----------------------------
+# Talk-to-Your-Data AI
+# ----------------------------
+try:
+    from engines.talk_to_data import talk_to_data_ai
+    TALK_ENABLED = True
+except ModuleNotFoundError:
+    TALK_ENABLED = False
+
+if TALK_ENABLED:
+    st.subheader("💬 Talk to Your Data AI")
+    user_question = st.text_input("Ask a question about your data (e.g., 'Top 5 Amount outliers')")
+    if st.button("Ask AI") and user_question:
+        with st.spinner("🤖 Generating answer..."):
+            answer = talk_to_data_ai(df, query=user_question)  # ✅ updated 'question' -> 'query'
+            st.info(answer)
+else:
+    st.info("Talk-to-Your-Data AI module not installed. Skipping.")
+
+    # ----------------------------
     # Run AI Analysis (Manual)
+    # ----------------------------
     if st.button("Run AI Analysis"):
         with st.spinner("🚀 Running AI analysis..."):
             output = route_to_engines(df, column_types, autofix=autofix, industry=industry_value)
 
-        # Problem Discovery + Top Outliers
+        # ----------------------------
+        # Problem Discovery + Top Outliers Table
+        # ----------------------------
         st.subheader("🛠 Problem Discovery")
         problem_discovery = output.get("problem_discovery") or {}
         st.json(problem_discovery)
@@ -165,14 +175,18 @@ if uploaded_file:
         if top_outliers:
             st.markdown("**Top 10 outliers per column:**")
             for col, values in top_outliers.items():
-                st.write(f"{col}: {values}")
+                st.dataframe(pd.DataFrame({col: values}))
 
+        # ----------------------------
         # Business Intelligence
+        # ----------------------------
         st.subheader("📌 Business Intelligence")
         business_insights = output.get("business_insights") or {}
         st.json(business_insights)
 
+        # ----------------------------
         # Industry Smart Insights
+        # ----------------------------
         if industry_value:
             st.subheader(f"💡 Industry Smart Insights ({industry_value})")
             industry_insights = output.get("industry_insights") or {}
@@ -187,27 +201,40 @@ if uploaded_file:
             else:
                 st.success("No industry-specific issues detected.")
 
-        # Predictions
+        # ----------------------------
+        # Predictions + Filtering
+        # ----------------------------
         st.subheader("📊 Predictions")
         predictions = output.get("predictions") or {}
         st.json(predictions)
 
+        st.subheader("📊 Filtered Predictions")
+        recommendations = output.get("recommendations") or {}
+        category_filter = st.selectbox("Filter predictions by category", ["All", "High", "Medium", "Low"])
+        filtered_recs = {}
+        for key, rec_list in recommendations.items():
+            if category_filter != "All":
+                filtered_recs[key] = [r for r in rec_list if r.get("category") == category_filter]
+            else:
+                filtered_recs[key] = rec_list
+        st.json(filtered_recs)
+
+        # ----------------------------
         # Why Engine (Top SHAP Features)
+        # ----------------------------
         st.subheader("💡 Why Predictions (Top SHAP Features)")
         try:
-            from shap import Explainer, values_to_matrix, summary_plot
+            from shap import Explainer
         except ImportError:
             st.warning("SHAP library is not installed. Skipping feature explanations.")
             Explainer = None
 
-        if Explainer is not None:
+        if Explainer:
             for target, info in predictions.items():
                 model_pipe = info.get("best_model_pipeline")
                 if not model_pipe:
                     continue
-
                 st.markdown(f"**Target:** {target} — Best Model: {info.get('best_model', 'N/A')}")
-
                 try:
                     X_raw = df.drop(columns=[target])
                     if info.get("task") == "regression":
@@ -216,13 +243,14 @@ if uploaded_file:
                             st.info(f"No numeric columns to explain for {target}. Skipping SHAP.")
                             continue
 
-                    if "prep" in model_pipe.named_steps:
-                        X_transformed = model_pipe.named_steps["prep"].transform(X_raw)
+                    X_transformed = model_pipe.named_steps.get("prep", None)
+                    if X_transformed:
+                        X_transformed = X_transformed.transform(X_raw)
                     else:
                         X_transformed = X_raw.values
 
-                    background = X_transformed[:min(100, X_transformed.shape[0])]
                     model = model_pipe.named_steps["model"]
+                    background = X_transformed[:min(100, X_transformed.shape[0])]
 
                     explainer = Explainer(model.predict, background)
                     shap_values = explainer(X_transformed)
@@ -239,26 +267,32 @@ if uploaded_file:
                     ax.set_xlabel("Mean |SHAP Value|")
                     ax.set_title(f"Top 5 Features for {target}")
                     st.pyplot(fig)
-
                 except Exception as e:
                     st.error(f"Failed to generate SHAP for {target}: {e}")
 
+        # ----------------------------
         # Recommendations
+        # ----------------------------
         st.subheader("🎯 Recommendations")
-        recommendations = output.get("recommendations") or {}
         st.json(recommendations)
 
+        # ----------------------------
         # Self Critic
+        # ----------------------------
         st.subheader("🧪 Self-Critic")
         self_critic = output.get("self_critic") or {}
         st.json(self_critic)
 
+        # ----------------------------
         # Decision Intelligence
+        # ----------------------------
         st.subheader("🧠 Decision Intelligence")
         decision_intelligence = output.get("decision_intelligence") or {}
         st.json(decision_intelligence)
 
+        # ----------------------------
         # Graphs
+        # ----------------------------
         st.subheader("📈 Graphs")
         graph_folder = output.get("graph_folder") or "outputs/graphs"
         if os.path.exists(graph_folder):
@@ -271,7 +305,14 @@ if uploaded_file:
         else:
             st.warning("Graph folder does not exist.")
 
+        # ----------------------------
+        # Power BI Export
+        # ----------------------------
+        st.button("Export for Power BI", on_click=export_for_powerbi, args=(df, output, industry_value))
+
+        # ----------------------------
         # Downloads
+        # ----------------------------
         st.subheader("💾 Download Outputs")
         downloadable_files = [
             "outputs/predictions.json",
@@ -291,9 +332,11 @@ if uploaded_file:
             else:
                 st.info(f"Not generated yet: {file_name}")
 
+        # ----------------------------
         # Adaptive / Self-Learning Insights
+        # ----------------------------
         st.subheader("💡 Adaptive / Self-Learning Insights")
-        adaptive_insights = output.get("self_critic") or {}
+        adaptive_insights = output.get("adaptive_insights") or {}
         if adaptive_insights:
             st.json(adaptive_insights)
             st.download_button(
@@ -331,7 +374,9 @@ if uploaded_file and autopilot_mode:
 
         st.success("✅ AI Analytics Autopilot Complete!")
 
-        # Display outputs
+        # ----------------------------
+        # Display outputs (Autopilot)
+        # ----------------------------
         sections = [
             ("🛠 Problem Discovery", "problem_discovery"),
             ("📌 Business Intelligence", "business_insights"),
@@ -381,7 +426,7 @@ if uploaded_file and autopilot_mode:
 
         # Adaptive Insights
         st.subheader("💡 Adaptive / Self-Learning Insights")
-        adaptive_insights = output.get("self_critic") or {}
+        adaptive_insights = output.get("adaptive_insights") or {}
         if adaptive_insights:
             st.json(adaptive_insights)
             st.download_button(
