@@ -2,13 +2,17 @@ import sys, os
 sys.path.append(os.path.abspath(os.getcwd()))
 
 import streamlit as st
+
+# MUST BE FIRST STREAMLIT COMMAND
+st.set_page_config(page_title="KENSOLO AI", layout="wide")
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import warnings
 import numpy as np
 import base64
 
-warnings.filterwarnings("ignore")  # suppress warnings
+warnings.filterwarnings("ignore")
 
 from core.router import route_to_engines
 
