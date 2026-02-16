@@ -3,8 +3,11 @@ sys.path.append(os.path.abspath(os.getcwd()))
 
 import streamlit as st
 
+# ----------------------------
 # MUST BE FIRST STREAMLIT COMMAND
+# ----------------------------
 st.set_page_config(page_title="KENSOLO AI", layout="wide")
+st.title("🤖 KENSOLO — AI Analytics Dashboard")
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -12,14 +15,14 @@ import warnings
 import numpy as np
 import base64
 
-warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore")  # suppress warnings
 
 from core.router import route_to_engines
 
 # ----------------------------
 # Dark Blue Background (No Image)
 # ----------------------------
-def set_background(bg_color="#0B3D91"):  # dark blue
+def set_background(bg_color="#0B3D91"):
     st.markdown(
         f"""
         <style>
@@ -33,7 +36,7 @@ def set_background(bg_color="#0B3D91"):  # dark blue
         }}
         .stText, .stInfo, .stMarkdown, .stJson {{
             font-weight: 700 !important;
-            color: #000000 !important;  /* black text */
+            color: #000000 !important;
             background-color: rgba(255,255,255,0.2) !important;
             padding: 8px;
             border-radius: 6px;
@@ -74,12 +77,6 @@ def display_ai_answer(answer):
     )
 
 # ----------------------------
-# Streamlit Page Config
-# ----------------------------
-st.set_page_config(page_title="KENSOLO AI", layout="wide")
-st.title("🤖 KENSOLO — AI Analytics Dashboard")
-
-# ----------------------------
 # Industry Selection
 # ----------------------------
 industry_options = ["None", "Finance", "Healthcare", "Retail", "Manufacturing"]
@@ -90,6 +87,7 @@ industry_value = None if selected_industry == "None" else selected_industry
 # File Upload
 # ----------------------------
 uploaded_file = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx"])
+df = None
 
 if uploaded_file:
     try:
@@ -124,41 +122,31 @@ if uploaded_file:
     column_types = {col: ("text" if df[col].dtype == "object" else "numerical") for col in df.columns}
 
     # ----------------------------
-    # Power BI Export (Upgraded)
+    # Power BI Export
     # ----------------------------
     def export_for_powerbi(df, output, industry_value):
-        """
-        Export AI outputs to CSV files for Power BI.
-        Automatically creates 'outputs/powerbi' folder.
-        Converts JSON outputs to CSV if needed.
-        """
         powerbi_folder = "outputs/powerbi"
         os.makedirs(powerbi_folder, exist_ok=True)
 
-        # 1️⃣ Export raw dataframe
         df.to_csv(os.path.join(powerbi_folder, "df_for_powerbi.csv"), index=False)
 
-        # 2️⃣ Export predictions
         predictions = output.get("predictions") or {}
         if predictions:
             all_preds = {}
             for target, info in predictions.items():
                 sample_preds = info.get("sample_predictions")
                 if sample_preds:
-                    # Flatten list of dicts to dataframe
                     all_preds[target] = pd.DataFrame(sample_preds)
             if all_preds:
                 for target, df_preds in all_preds.items():
                     df_preds.to_csv(os.path.join(powerbi_folder, f"predictions_{target}.csv"), index=False)
 
-        # 3️⃣ Export recommendations
         recommendations = output.get("recommendations") or {}
         if recommendations:
             for key, rec_list in recommendations.items():
                 if rec_list:
                     pd.DataFrame(rec_list).to_csv(os.path.join(powerbi_folder, f"recommendations_{key}.csv"), index=False)
 
-        # 4️⃣ Export adaptive insights (if exist)
         adaptive_insights = output.get("adaptive_insights") or {}
         if adaptive_insights:
             pd.DataFrame.from_dict(adaptive_insights, orient="index").to_csv(
@@ -166,6 +154,7 @@ if uploaded_file:
             )
 
         st.success(f"✅ Power BI export completed! CSVs saved in '{powerbi_folder}'")
+
 
     # ----------------------------
     # Talk-to-Your-Data AI
