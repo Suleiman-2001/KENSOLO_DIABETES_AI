@@ -87,6 +87,39 @@ def safe_to_csv(data, filepath):
         print(f"⚠️ Failed to save {filepath}: {e}")
 
 # ----------------------------
+# Enhanced Save Predictions & Recommendations
+# ----------------------------
+def save_predictions_and_recommendations(predictions, recommendations, folder):
+    os.makedirs(folder, exist_ok=True)
+    paths = {}
+
+    # Save predictions.json
+    pred_json_path = os.path.join(folder, "predictions.json")
+    pd.Series(predictions).to_json(pred_json_path, indent=4)
+    paths["predictions.json"] = pred_json_path
+
+    # Save recommendations.json
+    rec_json_path = os.path.join(folder, "recommendations.json")
+    pd.Series(recommendations).to_json(rec_json_path, indent=4)
+    paths["recommendations.json"] = rec_json_path
+
+    # Save predictions.csv
+    pred_csv_path = os.path.join(folder, "predictions.csv")
+    pd.DataFrame.from_dict(predictions, orient="index").to_csv(pred_csv_path)
+    paths["predictions.csv"] = pred_csv_path
+
+    # Save recommendations.csv
+    rec_csv_path = os.path.join(folder, "recommendations.csv")
+    pd.DataFrame([
+        {**item, "target": target}
+        for target, rec_list in recommendations.items()
+        for item in rec_list
+    ]).to_csv(rec_csv_path, index=False)
+    paths["recommendations.csv"] = rec_csv_path
+
+    return paths
+
+# ----------------------------
 # ROUTER FUNCTION
 # ----------------------------
 def route_to_engines(df, column_types, autofix=True, industry=None, query=None):
@@ -98,11 +131,12 @@ def route_to_engines(df, column_types, autofix=True, industry=None, query=None):
     working_df = copy.deepcopy(df)
 
     # ----------------------------
-    # Handle massive datasets
+    # Handle massive datasets with sampling
     # ----------------------------
-    if len(working_df) > 1_000_000:
-        print(f"⚡ Dataset has {len(working_df)} rows, sampling 1M for faster processing...")
-        working_df = working_df.sample(n=1_000_000, random_state=42).reset_index(drop=True)
+    if len(working_df) > 20_000:
+        sample_size = min(150_000, len(working_df))
+        print(f"⚡ Dataset has {len(working_df)} rows, sampling {sample_size} for faster processing...")
+        working_df = working_df.sample(n=sample_size, random_state=42).reset_index(drop=True)
 
     # ----------------------------
     # Autofix
@@ -179,7 +213,6 @@ def route_to_engines(df, column_types, autofix=True, industry=None, query=None):
     # ----------------------------
     # Keep all engines intact
     # ----------------------------
-    # Problem discovery
     problem_discovery = result.get("problem_discovery", {})
 
     # Why Engine
@@ -246,7 +279,7 @@ def route_to_engines(df, column_types, autofix=True, industry=None, query=None):
         for k, v in aggregated_predictions.items()
     }
     saved_files = save_predictions_and_recommendations(predictions_to_save, recommendations, folder=BASE_OUTPUT)
-    print("💾 Predictions & Recommendations Saved")
+    print("💾 Predictions & Recommendations Saved:", saved_files)
 
     # ----------------------------
     # Self-Critic
