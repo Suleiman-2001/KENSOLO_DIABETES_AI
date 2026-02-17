@@ -14,9 +14,9 @@ from engines.decision_engine import run_decision_intelligence
 from engines.business_engine import run_business_intelligence
 from engines.business_graph_engine import generate_business_graphs
 from engines.autofix_engine import apply_autofix
-from engines.why_engine import explain_predictions  # ✅ Why Engine
-from engines.adaptive_engine import run_adaptive_analytics  # ✅ Self-Learning / Adaptive Analytics
-from engines.talk_to_data import talk_to_data_ai  # ✅ Talk-to-Your-Data AI
+from engines.why_engine import explain_predictions
+from engines.adaptive_engine import run_adaptive_analytics
+from engines.talk_to_data import talk_to_data_ai
 from core.kpi_engine import detect_kpis
 from core.quality_engine import data_quality_score
 from core.insight_engine import auto_insights
@@ -39,7 +39,7 @@ os.makedirs(POWERBI_FOLDER, exist_ok=True)
 # Chunking & threading settings
 # ----------------------------
 CHUNK_SIZE = 100_000  # Adjustable
-MAX_PROCESSES = 4     # Adjust based on your CPU/RAM
+MAX_PROCESSES = min(4, os.cpu_count() or 1)  # Dynamically adjust based on CPU
 
 # ----------------------------
 # Helper to process heavy engines per chunk
@@ -47,16 +47,12 @@ MAX_PROCESSES = 4     # Adjust based on your CPU/RAM
 def process_chunk(chunk_df, column_types, industry=None):
     results = {}
     try:
-        # Problem discovery
         results["problem_discovery"] = discover_problem(chunk_df)
-        # NLP analysis
         text_cols = [c for c, t in column_types.items() if t == "text"]
         results["nlp_features"] = run_nlp_analysis(chunk_df, text_columns=text_cols) if text_cols else None
-        # Predictive modeling
         numerical_cols = [c for c, t in column_types.items() if t == "numerical"]
         targets_dict = {"numerical": numerical_cols, "categorical": []}
         results["predictions"] = run_predictive_model(chunk_df, targets_dict)
-        # Graphs
         results["graph_files"] = generate_graphs(chunk_df, targets_dict, folder=GRAPH_FOLDER)
     except Exception as e:
         results["error"] = str(e)
@@ -66,18 +62,12 @@ def process_chunk(chunk_df, column_types, industry=None):
 # Safe CSV export helper
 # ----------------------------
 def safe_to_csv(data, filepath):
-    """
-    Safely converts data (list/dict) to DataFrame and saves as CSV,
-    handles uneven lists/dicts for Power BI exports.
-    """
     try:
         if isinstance(data, dict):
-            # dict of dicts or dict of lists
             if all(isinstance(v, dict) for v in data.values()):
                 df = pd.json_normalize(data, sep="_").T.reset_index()
                 df.rename(columns={"index": "target"}, inplace=True)
             elif all(isinstance(v, list) for v in data.values()):
-                # flatten lists
                 rows = []
                 for k, lst in data.items():
                     for item in lst:
@@ -97,17 +87,19 @@ def safe_to_csv(data, filepath):
         print(f"⚠️ Failed to save {filepath}: {e}")
 
 # ----------------------------
-# Route function
+# ROUTER FUNCTION
 # ----------------------------
 def route_to_engines(df, column_types, autofix=True, industry=None, query=None):
     """
     Routes dataset through KENSOLO AI engines
-    Optimized for chunked + threaded execution for large datasets.
+    Optimized for chunked + threaded execution while keeping all engines intact.
     """
     fixes_summary = {}
     working_df = copy.deepcopy(df)
 
-    # Apply sampling if dataset is huge
+    # ----------------------------
+    # Handle massive datasets
+    # ----------------------------
     if len(working_df) > 1_000_000:
         print(f"⚡ Dataset has {len(working_df)} rows, sampling 1M for faster processing...")
         working_df = working_df.sample(n=1_000_000, random_state=42).reset_index(drop=True)
@@ -128,53 +120,20 @@ def route_to_engines(df, column_types, autofix=True, industry=None, query=None):
             print(f"⚠️ Autofix failed: {e}")
             working_df = df
 
+        # Update column types
         column_types = {
             col: ("text" if working_df[col].dtype == "object" else "numerical")
             for col in working_df.columns
         }
 
     # ----------------------------
-    # Industry Smart Mode
+    # Industry Insights
     # ----------------------------
     industry_insights = {}
     if industry:
-        industry_lower = industry.lower()
-        print(f"🚀 Industry Smart Mode enabled for: {industry}")
         try:
-            if industry_lower == "finance":
-                for col in working_df.columns:
-                    if "currency" in col.lower() or "account" in col.lower():
-                        unique_vals = working_df[col].nunique()
-                        missing_vals = working_df[col].isna().sum()
-                        if unique_vals > 1000:
-                            industry_insights[col] = f"High cardinality ({unique_vals}) expected in financial datasets"
-                        if missing_vals > 0:
-                            industry_insights[col + "_missing"] = f"{missing_vals} missing values detected"
-                    if "amount" in col.lower() or "balance" in col.lower():
-                        mean_val = working_df[col].mean()
-                        std_val = working_df[col].std()
-                        outliers = working_df[(working_df[col] < mean_val - 3*std_val) | (working_df[col] > mean_val + 3*std_val)]
-                        if not outliers.empty:
-                            industry_insights[col + "_outliers"] = f"{len(outliers)} extreme values detected"
-            elif industry_lower == "healthcare":
-                for col in working_df.columns:
-                    if "patient" in col.lower():
-                        missing_count = working_df[col].isna().sum()
-                        if missing_count > 0:
-                            industry_insights[col] = f"Missing patient IDs detected: {missing_count} rows"
-                    if "age" in col.lower() or "dob" in col.lower():
-                        if working_df[col].dtype in [int, float]:
-                            invalid_vals = working_df[(working_df[col] < 0) | (working_df[col] > 120)]
-                            if not invalid_vals.empty:
-                                industry_insights[col + "_invalid"] = f"{len(invalid_vals)} invalid age values detected"
-            elif industry_lower == "retail":
-                if "sales" in working_df.columns:
-                    sales_mean = working_df["sales"].mean()
-                    sales_std = working_df["sales"].std()
-                    industry_insights["sales_anomaly_threshold"] = f"Mean ± 3*STD = {sales_mean - 3*sales_std:.2f} - {sales_mean + 3*sales_std:.2f}"
-                    anomalies = working_df[(working_df["sales"] < sales_mean - 3*sales_std) | (working_df["sales"] > sales_mean + 3*sales_std)]
-                    if not anomalies.empty:
-                        industry_insights["sales_anomalies_detected"] = f"{len(anomalies)} sales anomalies detected"
+            from engines.industry_engine import generate_industry_insights
+            industry_insights = generate_industry_insights(working_df, industry)
             print(f"💡 Industry insights generated: {len(industry_insights)} items")
         except Exception as e:
             industry_insights = {"error": str(e)}
@@ -211,21 +170,19 @@ def route_to_engines(df, column_types, autofix=True, industry=None, query=None):
                 # Aggregate graph files
                 aggregated_graphs.extend(result.get("graph_files", []))
     else:
-        # Small dataset, just run directly
+        # Small dataset
         result = process_chunk(working_df, column_types, industry)
         aggregated_predictions = result.get("predictions", {})
         aggregated_nlp = result.get("nlp_features")
         aggregated_graphs = result.get("graph_files", [])
 
     # ----------------------------
-    # Continue the rest of your engines sequentially
+    # Keep all engines intact
     # ----------------------------
-    # Problem discovery (already done per chunk, take first)
+    # Problem discovery
     problem_discovery = result.get("problem_discovery", {})
 
-    # ----------------------------
     # Why Engine
-    # ----------------------------
     why_explanations = {}
     try:
         for target, info in aggregated_predictions.items():
@@ -236,18 +193,14 @@ def route_to_engines(df, column_types, autofix=True, industry=None, query=None):
     except Exception as e:
         why_explanations = {"error": str(e)}
 
-    # ----------------------------
     # Recommendations
-    # ----------------------------
     recommendations = {}
     for target, info in aggregated_predictions.items():
         recs = []
         for val in info.get("sample_predictions", []):
             try:
                 v = float(val)
-                low, med = 50, 75
-                if industry and industry.lower() == "finance":
-                    low, med = 40, 80
+                low, med = (40, 80) if industry and industry.lower() == "finance" else (50, 75)
                 if v < low:
                     recs.append({"prediction": v, "category": "Low", "recommendation": "Immediate support required"})
                 elif v < med:
@@ -270,7 +223,7 @@ def route_to_engines(df, column_types, autofix=True, industry=None, query=None):
         print(f"⚠️ Business engine failed: {e}")
 
     # ----------------------------
-    # Business graphs
+    # Business Graphs
     # ----------------------------
     try:
         business_graph_files = generate_business_graphs(
@@ -368,10 +321,8 @@ def route_to_engines(df, column_types, autofix=True, industry=None, query=None):
     # ----------------------------
     try:
         from engines.industry_engine import adapt_recommendations_by_industry
-        industry_adjusted_recommendations = {}
-        if industry:
-            industry_adjusted_recommendations = adapt_recommendations_by_industry(recommendations, industry)
-            print("🏭 Industry Engine: Recommendations adapted to industry")
+        industry_adjusted_recommendations = adapt_recommendations_by_industry(recommendations, industry) if industry else {}
+        print("🏭 Industry Engine: Recommendations adapted to industry")
     except Exception as e:
         industry_adjusted_recommendations = {"error": str(e)}
         print(f"⚠️ Industry Engine failed: {e}")
