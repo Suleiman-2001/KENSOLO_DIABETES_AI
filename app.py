@@ -175,199 +175,128 @@ if uploaded_file:
     else:
         display_ai_answer("Talk-to-Your-Data AI module not installed. Skipping.")
 
-    # ----------------------------
-    # Run AI Analysis (Manual)
-    # ----------------------------
-    if st.button("Run AI Analysis"):
-        with st.spinner("🚀 Running AI analysis..."):
-            output = route_to_engines(df, column_types, autofix=autofix, industry=industry_value)
+# ----------------------------
+# Run AI Analysis (Manual)
+# ----------------------------
+if st.button("Run AI Analysis"):
+    with st.spinner("🚀 Running AI analysis..."):
+        output = route_to_engines(df, column_types, autofix=autofix, industry=industry_value)
 
         # ----------------------------
-        # Problem Discovery + Top Outliers Table
+        # SAVE FILES FOR DOWNLOAD
         # ----------------------------
-        st.subheader("🛠 Problem Discovery")
-        problem_discovery = output.get("problem_discovery") or {}
-        st.json(problem_discovery)
+        import json
+        import os
+        import pandas as pd
+        os.makedirs("outputs", exist_ok=True)
 
-        top_outliers = {}
-        for col, desc in problem_discovery.items():
-            if col in df.columns and np.issubdtype(df[col].dtype, np.number):
-                outliers_df = df[col].sort_values(key=lambda x: abs(x - x.mean()), ascending=False).head(10)
-                top_outliers[col] = outliers_df.tolist()
-        if top_outliers:
-            st.markdown("**Top 10 outliers per column:**")
-            for col, values in top_outliers.items():
-                st.dataframe(pd.DataFrame({col: values}))
+        # Predictions JSON
+        with open("outputs/predictions.json", "w") as f:
+            json.dump(output.get("predictions", {}), f, indent=4)
 
-        # ----------------------------
-        # Business Intelligence
-        # ----------------------------
-        st.subheader("📌 Business Intelligence")
-        business_insights = output.get("business_insights") or {}
-        st.json(business_insights)
+        # Recommendations JSON
+        with open("outputs/recommendations.json", "w") as f:
+            json.dump(output.get("recommendations", {}), f, indent=4)
 
-        # ----------------------------
-        # Industry Smart Insights
-        # ----------------------------
-        if industry_value:
-            st.subheader(f"💡 Industry Smart Insights ({industry_value})")
-            industry_insights = output.get("industry_insights") or {}
-            if industry_insights:
-                for key, val in industry_insights.items():
-                    if "missing" in key.lower():
-                        st.warning(f"⚠️ {key}: {val}")
-                    elif "outliers" in key.lower() or "anomalies" in key.lower() or "invalid" in key.lower():
-                        st.error(f"❌ {key}: {val}")
-                    else:
-                        st.info(f"ℹ️ {key}: {val}")
-            else:
-                st.success("No industry-specific issues detected.")
+        # Predictions CSV
+        pred_rows = []
+        for target, items in output.get("predictions", {}).items():
+            for item in items:
+                row = item.copy() if isinstance(item, dict) else {"value": item}
+                row["target"] = target
+                pred_rows.append(row)
+        pd.DataFrame(pred_rows).to_csv("outputs/predictions.csv", index=False)
 
-        # ----------------------------
-        # Predictions + Filtering
-        # ----------------------------
-        st.subheader("📊 Predictions")
-        predictions = output.get("predictions") or {}
-        st.json(predictions)
+        # Recommendations CSV
+        rec_rows = []
+        for target, rec_list in output.get("recommendations", {}).items():
+            for rec in rec_list:
+                row = rec.copy()
+                row["target"] = target
+                rec_rows.append(row)
+        pd.DataFrame(rec_rows).to_csv("outputs/recommendations.csv", index=False)
 
-        st.subheader("📊 Filtered Predictions")
-        recommendations = output.get("recommendations") or {}
-        category_filter = st.selectbox("Filter predictions by category", ["All", "High", "Medium", "Low"])
-        filtered_recs = {}
-        for key, rec_list in recommendations.items():
-            if category_filter != "All":
-                filtered_recs[key] = [r for r in rec_list if r.get("category") == category_filter]
-            else:
-                filtered_recs[key] = rec_list
-        st.json(filtered_recs)
-
-        # ----------------------------
-        # Why Engine (Top SHAP Features)
-        # ----------------------------
-        st.subheader("💡 Why Predictions (Top SHAP Features)")
+        # Simple PDF Report
         try:
-            from shap import Explainer
-        except ImportError:
-            st.warning("SHAP library is not installed. Skipping feature explanations.")
-            Explainer = None
+            from fpdf import FPDF
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", "B", 16)
+            pdf.cell(0, 10, "KENSOLO AI Report", ln=True, align="C")
+            pdf.output("outputs/report.pdf")
+        except Exception as e:
+            st.warning(f"PDF report generation failed: {e}")
 
-        if Explainer:
-            for target, info in predictions.items():
-                model_pipe = info.get("best_model_pipeline")
-                if not model_pipe:
-                    continue
-                st.markdown(f"**Target:** {target} — Best Model: {info.get('best_model', 'N/A')}")
-                try:
-                    X_raw = df.drop(columns=[target])
-                    if info.get("task") == "regression":
-                        X_raw = X_raw.select_dtypes(include=[np.number])
-                        if X_raw.empty:
-                            st.info(f"No numeric columns to explain for {target}. Skipping SHAP.")
-                            continue
+    st.success("✅ AI Analysis Complete! Files saved in outputs/")
 
-                    X_transformed = model_pipe.named_steps.get("prep", None)
-                    if X_transformed:
-                        X_transformed = X_transformed.transform(X_raw)
-                    else:
-                        X_transformed = X_raw.values
+    # ----------------------------
+    # Display Outputs
+    # ----------------------------
+    sections = [
+        ("🛠 Problem Discovery", "problem_discovery"),
+        ("📌 Business Intelligence", "business_insights"),
+        (f"💡 Industry Smart Insights ({industry_value})", "industry_insights"),
+        ("📊 Predictions", "predictions"),
+        ("🎯 Recommendations", "recommendations"),
+        ("🧪 Self-Critic", "self_critic"),
+        ("🧠 Decision Intelligence", "decision_intelligence")
+    ]
 
-                    model = model_pipe.named_steps["model"]
-                    background = X_transformed[:min(100, X_transformed.shape[0])]
+    for title, key in sections:
+        st.subheader(title)
+        st.json(output.get(key) or {})
 
-                    explainer = Explainer(model.predict, background)
-                    shap_values = explainer(X_transformed)
-
-                    mean_abs_shap = np.abs(shap_values.values).mean(axis=0)
-                    feature_names = X_raw.columns.tolist()
-                    top_indices = np.argsort(mean_abs_shap)[-5:][::-1]
-                    top_features = [(feature_names[i], mean_abs_shap[i]) for i in top_indices]
-
-                    feat_names, feat_vals = zip(*top_features)
-                    fig, ax = plt.subplots(figsize=(8, 4))
-                    ax.barh(feat_names, feat_vals, color="skyblue")
-                    ax.invert_yaxis()
-                    ax.set_xlabel("Mean |SHAP Value|")
-                    ax.set_title(f"Top 5 Features for {target}")
-                    st.pyplot(fig)
-                except Exception as e:
-                    st.error(f"Failed to generate SHAP for {target}: {e}")
-
-        # ----------------------------
-        # Recommendations
-        # ----------------------------
-        st.subheader("🎯 Recommendations")
-        st.json(recommendations)
-
-        # ----------------------------
-        # Self Critic
-        # ----------------------------
-        st.subheader("🧪 Self-Critic")
-        self_critic = output.get("self_critic") or {}
-        st.json(self_critic)
-
-        # ----------------------------
-        # Decision Intelligence
-        # ----------------------------
-        st.subheader("🧠 Decision Intelligence")
-        decision_intelligence = output.get("decision_intelligence") or {}
-        st.json(decision_intelligence)
-
-        # ----------------------------
-        # Graphs
-        # ----------------------------
-        st.subheader("📈 Graphs")
-        graph_folder = output.get("graph_folder") or "outputs/graphs"
-        if os.path.exists(graph_folder):
-            graphs = [f for f in os.listdir(graph_folder) if f.endswith(".png")]
-            if graphs:
-                for g in sorted(graphs):
-                    st.image(os.path.join(graph_folder, g), caption=g, use_container_width=True)
-            else:
-                st.warning("No graphs found in graph folder.")
+    # ----------------------------
+    # Graphs
+    # ----------------------------
+    st.subheader("📈 Graphs")
+    graph_folder = output.get("graph_folder") or "outputs/graphs"
+    if os.path.exists(graph_folder):
+        graphs = [f for f in os.listdir(graph_folder) if f.endswith(".png")]
+        if graphs:
+            for g in sorted(graphs):
+                st.image(os.path.join(graph_folder, g), caption=g, use_container_width=True)
         else:
-            st.warning("Graph folder does not exist.")
+            st.warning("No graphs found in graph folder.")
+    else:
+        st.warning("Graph folder does not exist.")
 
-        # ----------------------------
-        # Power BI Export
-        # ----------------------------
-        st.button("Export for Power BI", on_click=export_for_powerbi, args=(df, output, industry_value))
-
-        # ----------------------------
-        # Downloads
-        # ----------------------------
-        st.subheader("💾 Download Outputs")
-        downloadable_files = [
-            "outputs/predictions.json",
-            "outputs/recommendations.json",
-            "outputs/predictions.csv",
-            "outputs/recommendations.csv",
-            "outputs/report.pdf",
-        ]
-        for file_name in downloadable_files:
-            if os.path.exists(file_name):
-                with open(file_name, "rb") as f:
-                    st.download_button(
-                        f"Download {os.path.basename(file_name)}",
-                        f,
-                        file_name=os.path.basename(file_name)
-                    )
-            else:
-                st.info(f"Not generated yet: {file_name}")
-
-        # ----------------------------
-        # Adaptive / Self-Learning Insights
-        # ----------------------------
-        st.subheader("💡 Adaptive / Self-Learning Insights")
-        adaptive_insights = output.get("adaptive_insights") or {}
-        if adaptive_insights:
-            st.json(adaptive_insights)
-            st.download_button(
-                "Download Adaptive Insights JSON",
-                data=pd.Series(adaptive_insights).to_json(),
-                file_name="adaptive_insights.json"
-            )
+    # ----------------------------
+    # Downloads
+    # ----------------------------
+    st.subheader("💾 Download Outputs")
+    downloadable_files = [
+        "outputs/predictions.json",
+        "outputs/recommendations.json",
+        "outputs/predictions.csv",
+        "outputs/recommendations.csv",
+        "outputs/report.pdf",
+    ]
+    for file_name in downloadable_files:
+        if os.path.exists(file_name):
+            with open(file_name, "rb") as f:
+                st.download_button(
+                    f"Download {os.path.basename(file_name)}",
+                    f,
+                    file_name=os.path.basename(file_name)
+                )
         else:
-            st.info("No adaptive insights generated.")
+            st.info(f"Not generated yet: {file_name}")
+
+    # ----------------------------
+    # Adaptive / Self-Learning Insights
+    # ----------------------------
+    st.subheader("💡 Adaptive / Self-Learning Insights")
+    adaptive_insights = output.get("adaptive_insights") or {}
+    if adaptive_insights:
+        st.json(adaptive_insights)
+        st.download_button(
+            "Download Adaptive Insights JSON",
+            data=pd.Series(adaptive_insights).to_json(),
+            file_name="adaptive_insights.json"
+        )
+    else:
+        st.info("No adaptive insights generated.")
 
 # ----------------------------
 # AI Analytics Autopilot
