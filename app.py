@@ -20,6 +20,15 @@ warnings.filterwarnings("ignore")  # suppress warnings
 from core.router import route_to_engines
 
 # ----------------------------
+# Session State for Outputs
+# ----------------------------
+if "output" not in st.session_state:
+    st.session_state.output = None
+
+if "autopilot_ran" not in st.session_state:
+    st.session_state.autopilot_ran = False
+
+# ----------------------------
 # Dark Blue Background (No Image)
 # ----------------------------
 def set_background(bg_color="#0B3D91"):
@@ -103,6 +112,9 @@ if uploaded_file:
         st.error(f"Failed to load file: {e}")
         st.stop()
 
+    # Reset autopilot flag when a new file is uploaded
+    st.session_state.autopilot_ran = False
+
     # ----------------------------
     # Autofix
     # ----------------------------
@@ -180,7 +192,8 @@ if uploaded_file:
 # ----------------------------
 if st.button("Run AI Analysis"):
     with st.spinner("🚀 Running AI analysis..."):
-        output = route_to_engines(df, column_types, autofix=autofix, industry=industry_value)
+        st.session_state.output = route_to_engines(df, column_types, autofix=autofix, industry=industry_value)
+        output = st.session_state.output
 
         # ----------------------------
         # SAVE FILES FOR DOWNLOAD
@@ -232,6 +245,7 @@ if st.button("Run AI Analysis"):
     # ----------------------------
     # Display Outputs
     # ----------------------------
+    output = st.session_state.output
     sections = [
         ("🛠 Problem Discovery", "problem_discovery"),
         ("📌 Business Intelligence", "business_insights"),
@@ -246,9 +260,7 @@ if st.button("Run AI Analysis"):
         st.subheader(title)
         st.json(output.get(key) or {})
 
-    # ----------------------------
     # Graphs
-    # ----------------------------
     st.subheader("📈 Graphs")
     graph_folder = output.get("graph_folder") or "outputs/graphs"
     if os.path.exists(graph_folder):
@@ -261,9 +273,7 @@ if st.button("Run AI Analysis"):
     else:
         st.warning("Graph folder does not exist.")
 
-    # ----------------------------
     # Downloads
-    # ----------------------------
     st.subheader("💾 Download Outputs")
     downloadable_files = [
         "outputs/predictions.json",
@@ -283,9 +293,7 @@ if st.button("Run AI Analysis"):
         else:
             st.info(f"Not generated yet: {file_name}")
 
-    # ----------------------------
     # Adaptive / Self-Learning Insights
-    # ----------------------------
     st.subheader("💡 Adaptive / Self-Learning Insights")
     adaptive_insights = output.get("adaptive_insights") or {}
     if adaptive_insights:
@@ -304,86 +312,88 @@ if st.button("Run AI Analysis"):
 st.subheader("🤖 AI Analytics Autopilot")
 autopilot_mode = st.checkbox("Enable AI Analytics Autopilot (Run full analysis automatically)")
 
-if uploaded_file and autopilot_mode:
-    if st.button("Run Autopilot"):
-        with st.spinner("🚀 Running AI Analytics Autopilot..."):
-            auto_column_types = {}
-            for col in df.columns:
-                if np.issubdtype(df[col].dtype, np.number):
-                    auto_column_types[col] = "numerical"
-                elif np.issubdtype(df[col].dtype, np.datetime64):
-                    auto_column_types[col] = "datetime"
-                else:
-                    auto_column_types[col] = "text"
-
-            output = route_to_engines(
-                df=df,
-                column_types=auto_column_types,
-                autofix=True,
-                industry=industry_value
-            )
-
-        st.success("✅ AI Analytics Autopilot Complete!")
-
-        # ----------------------------
-        # Display outputs (Autopilot)
-        # ----------------------------
-        sections = [
-            ("🛠 Problem Discovery", "problem_discovery"),
-            ("📌 Business Intelligence", "business_insights"),
-            (f"💡 Industry Smart Insights ({industry_value})", "industry_insights"),
-            ("📊 Predictions", "predictions"),
-            ("🎯 Recommendations", "recommendations"),
-            ("🧪 Self-Critic", "self_critic"),
-            ("🧠 Decision Intelligence", "decision_intelligence")
-        ]
-
-        for title, key in sections:
-            st.subheader(title)
-            st.json(output.get(key) or {})
-
-        # Graphs
-        st.subheader("📈 Graphs")
-        graph_folder = output.get("graph_folder") or "outputs/graphs"
-        if os.path.exists(graph_folder):
-            graphs = [f for f in os.listdir(graph_folder) if f.endswith(".png")]
-            if graphs:
-                for g in sorted(graphs):
-                    st.image(os.path.join(graph_folder, g), caption=g, use_container_width=True)
+# Run autopilot automatically only once per file upload
+if uploaded_file and autopilot_mode and not st.session_state.autopilot_ran:
+    st.session_state.autopilot_ran = True
+    with st.spinner("🚀 Running AI Analytics Autopilot..."):
+        auto_column_types = {}
+        for col in df.columns:
+            if np.issubdtype(df[col].dtype, np.number):
+                auto_column_types[col] = "numerical"
+            elif np.issubdtype(df[col].dtype, np.datetime64):
+                auto_column_types[col] = "datetime"
             else:
-                st.warning("No graphs found in graph folder.")
-        else:
-            st.warning("Graph folder does not exist.")
+                auto_column_types[col] = "text"
 
-        # Downloads
-        st.subheader("💾 Download Outputs")
-        downloadable_files = [
-            "outputs/predictions.json",
-            "outputs/recommendations.json",
-            "outputs/predictions.csv",
-            "outputs/recommendations.csv",
-            "outputs/report.pdf",
-        ]
-        for file_name in downloadable_files:
-            if os.path.exists(file_name):
-                with open(file_name, "rb") as f:
-                    st.download_button(
-                        f"Download {os.path.basename(file_name)}",
-                        f,
-                        file_name=os.path.basename(file_name)
-                    )
-            else:
-                st.info(f"Not generated yet: {file_name}")
+        st.session_state.output = route_to_engines(
+            df=df,
+            column_types=auto_column_types,
+            autofix=True,
+            industry=industry_value
+        )
 
-        # Adaptive Insights
-        st.subheader("💡 Adaptive / Self-Learning Insights")
-        adaptive_insights = output.get("adaptive_insights") or {}
-        if adaptive_insights:
-            st.json(adaptive_insights)
-            st.download_button(
-                "Download Adaptive Insights JSON",
-                data=pd.Series(adaptive_insights).to_json(),
-                file_name="adaptive_insights.json"
-            )
+    st.success("✅ AI Analytics Autopilot Complete!")
+
+# Display output if exists
+if st.session_state.output:
+    output = st.session_state.output
+
+    sections = [
+        ("🛠 Problem Discovery", "problem_discovery"),
+        ("📌 Business Intelligence", "business_insights"),
+        (f"💡 Industry Smart Insights ({industry_value})", "industry_insights"),
+        ("📊 Predictions", "predictions"),
+        ("🎯 Recommendations", "recommendations"),
+        ("🧪 Self-Critic", "self_critic"),
+        ("🧠 Decision Intelligence", "decision_intelligence")
+    ]
+
+    for title, key in sections:
+        st.subheader(title)
+        st.json(output.get(key) or {})
+
+    # Graphs
+    st.subheader("📈 Graphs")
+    graph_folder = output.get("graph_folder") or "outputs/graphs"
+    if os.path.exists(graph_folder):
+        graphs = [f for f in os.listdir(graph_folder) if f.endswith(".png")]
+        if graphs:
+            for g in sorted(graphs):
+                st.image(os.path.join(graph_folder, g), caption=g, use_container_width=True)
         else:
-            st.info("No adaptive insights generated.")
+            st.warning("No graphs found in graph folder.")
+    else:
+        st.warning("Graph folder does not exist.")
+
+    # Downloads
+    st.subheader("💾 Download Outputs")
+    downloadable_files = [
+        "outputs/predictions.json",
+        "outputs/recommendations.json",
+        "outputs/predictions.csv",
+        "outputs/recommendations.csv",
+        "outputs/report.pdf",
+    ]
+    for file_name in downloadable_files:
+        if os.path.exists(file_name):
+            with open(file_name, "rb") as f:
+                st.download_button(
+                    f"Download {os.path.basename(file_name)}",
+                    f,
+                    file_name=os.path.basename(file_name)
+                )
+        else:
+            st.info(f"Not generated yet: {file_name}")
+
+    # Adaptive / Self-Learning Insights
+    st.subheader("💡 Adaptive / Self-Learning Insights")
+    adaptive_insights = output.get("adaptive_insights") or {}
+    if adaptive_insights:
+        st.json(adaptive_insights)
+        st.download_button(
+            "Download Adaptive Insights JSON",
+            data=pd.Series(adaptive_insights).to_json(),
+            file_name="adaptive_insights.json"
+        )
+    else:
+        st.info("No adaptive insights generated.")

@@ -13,13 +13,35 @@ def find_column_from_query(df, query):
             return col
     return None
 
-
-def talk_to_data_ai(df: pd.DataFrame, query: str):
+def talk_to_data_ai(df: pd.DataFrame, query: str, output: dict = None):
     """
     Advanced Talk-to-Your-Data AI
     Natural-language friendly and business-aware.
+    output: Optional dict from AI analysis containing predictions.
     """
     query_lower = query.lower()
+
+    # -----------------------------
+    # ACCURACY / METRICS
+    # -----------------------------
+    if ("accuracy" in query_lower or "metric" in query_lower) and output:
+        predictions = output.get("predictions", {})
+        if not predictions:
+            return "⚠️ No predictions available to calculate accuracy or metrics."
+
+        accuracy_results = {}
+        for target, info in predictions.items():
+            # Expecting 'actual' and 'predicted' in info
+            actuals = info.get("actual")
+            preds = info.get("predicted")
+            if actuals and preds and len(actuals) == len(preds):
+                correct = sum([1 if a == p else 0 for a, p in zip(actuals, preds)])
+                accuracy = correct / len(actuals)
+                accuracy_results[target] = round(accuracy, 4)
+            else:
+                accuracy_results[target] = "Not available"
+
+        return f"✅ Accuracy / Metrics Results:\n{accuracy_results}"
 
     # -----------------------------
     # BASIC DATASET INFO
@@ -161,5 +183,5 @@ def talk_to_data_ai(df: pd.DataFrame, query: str):
     return (
         "🤖 I understood your query but could not match a specific rule. "
         "Try asking about: rows, columns, summary, quality, missing values, "
-        "constant columns, outliers, average, total, unique values, correlation, or any specific column."
+        "constant columns, outliers, average, total, unique values, correlation, metrics, or any specific column."
     )
