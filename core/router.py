@@ -128,13 +128,12 @@ def route_to_engines(df, column_types, autofix=True, industry=None, query=None):
     # =========================================================
     industry_insights = {}
     if industry:
-            try:
-                from core.insight_engine import generate_industry_insights
-                industry_insights = generate_industry_insights(working_df, industry)
-                print(f"💡 Industry insights generated: {len(industry_insights)} items")
-            except Exception as e:
-                industry_insights = {"error": str(e)}
-                print(f"⚠️ Industry Smart Mode failed: {e}")
+             try:
+                    industry_insights = generate_industry_insights(working_df)  # no second import needed
+                    print(f"💡 Industry insights generated: {len(industry_insights)} items")
+             except Exception as e:
+                    industry_insights = {"error": str(e)}
+                    print(f"⚠️ Industry Smart Mode failed: {e}")
 
 
     # =========================================================
@@ -282,7 +281,7 @@ def route_to_engines(df, column_types, autofix=True, industry=None, query=None):
 
     kpi_summary = detect_kpis(working_df)
     quality_summary = data_quality_score(working_df)
-    insight_summary = auto_insights(working_df)
+    insight_summary = generate_industry_insights(working_df)
     overview_summary = dataset_overview(working_df)
 
     adaptive_insights = run_adaptive_analytics(
@@ -333,7 +332,11 @@ def route_to_engines(df, column_types, autofix=True, industry=None, query=None):
     safe_to_csv(insight_summary, os.path.join(POWERBI_FOLDER, "insight_summary.csv"))
     safe_to_csv(overview_summary, os.path.join(POWERBI_FOLDER, "overview_summary.csv"))
     safe_to_csv(recommendations, os.path.join(POWERBI_FOLDER, "recommendations.csv"))
-    safe_to_csv(list(industry_insights.items()), os.path.join(POWERBI_FOLDER, "industry_insights.csv"))
+    if isinstance(industry_insights, dict):
+            safe_to_csv(list(industry_insights.items()), os.path.join(POWERBI_FOLDER, "industry_insights.csv"))
+    else:
+            safe_to_csv(industry_insights, os.path.join(POWERBI_FOLDER, "industry_insights.csv"))
+
 
     print(f"✅ All Power BI CSVs saved to: {POWERBI_FOLDER}")
 
