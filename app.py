@@ -2,7 +2,12 @@ import sys, os
 sys.path.append(os.path.abspath(os.getcwd()))
 
 import streamlit as st
-
+# ----------------------------
+# SAFE DEFAULTS (to avoid NameError)
+# ----------------------------
+df = None
+column_types = None
+autofix = False
 # ----------------------------
 # MUST BE FIRST STREAMLIT COMMAND
 # ----------------------------
@@ -190,8 +195,11 @@ if uploaded_file:
 # ----------------------------
 # Run AI Analysis (Manual)
 # ----------------------------
-if st.button("Run AI Analysis"):
+if df is not None and st.button("Run AI Analysis"):
     with st.spinner("🚀 Running AI analysis..."):
+        # Fallback in case column_types is not defined
+        if column_types is None:
+            column_types = {col: ("text" if df[col].dtype == "object" else "numerical") for col in df.columns}
         st.session_state.output = route_to_engines(df, column_types, autofix=autofix, industry=industry_value)
         output = st.session_state.output
 
