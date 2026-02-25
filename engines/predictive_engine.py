@@ -2,6 +2,8 @@
 import numpy as np
 import pandas as pd
 import warnings
+import os
+import json
 from joblib import Parallel, delayed
 
 from sklearn.model_selection import train_test_split
@@ -15,9 +17,12 @@ from sklearn.svm import SVR, SVC
 from sklearn.neighbors import KNeighborsClassifier
 from xgboost import XGBRegressor, XGBClassifier
 
+from fpdf import FPDF  # For PDF report
+
 warnings.filterwarnings("ignore")
 
 
+# ------------------- Feature Preparation -------------------
 def _prepare_features(df, target, sparse=True, max_categories=20):
     """
     Prepare features for modeling:
@@ -29,7 +34,6 @@ def _prepare_features(df, target, sparse=True, max_categories=20):
     cat_cols = [c for c in X.columns if X[c].dtype == "object"]
     num_cols = [c for c in X.columns if np.issubdtype(X[c].dtype, np.number)]
 
-    # Limit high-cardinality categorical columns by top categories
     limited_cat_cols = []
     for col in cat_cols:
         top_vals = df[col].value_counts().nlargest(max_categories).index
@@ -46,6 +50,7 @@ def _prepare_features(df, target, sparse=True, max_categories=20):
     return X, y, preprocessor
 
 
+# ------------------- Model Fitting -------------------
 def _fit_regression(name, model, X_train, y_train, X_test, y_test, preprocessor):
     pipe = Pipeline([("prep", preprocessor), ("model", model)])
     pipe.fit(X_train, y_train)
@@ -60,15 +65,8 @@ def _fit_classification(name, model, X_train, y_train, X_test, y_test, preproces
     return name, pipe, preds
 
 
+# ------------------- Predictive Engine -------------------
 def run_predictive_model(df, targets_dict, max_jobs=2, min_rows_regression=20, min_rows_classification=30):
-    """
-    Safe and optimized predictive engine:
-    - Sparse encoding for high-cardinality features
-    - Controlled parallelization (max_jobs)
-    - Sequential fallback for small datasets
-    - NaN-safe and small-sample-safe
-    - Limits high-cardinality categories automatically
-    """
     results = {}
 
     # ---------------- REGRESSION -----------------
@@ -88,9 +86,7 @@ def run_predictive_model(df, targets_dict, max_jobs=2, min_rows_regression=20, m
                 results[target] = {"error": "Insufficient rows after preprocessing"}
                 continue
 
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.2, random_state=42
-            )
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
             models = {
                 "LinearRegression": LinearRegression(),
@@ -211,3 +207,45 @@ def run_predictive_model(df, targets_dict, max_jobs=2, min_rows_regression=20, m
             results[target] = {"error": str(e)}
 
     return results
+
+
+# ------------------- Save Predictions for Download -------------------
+def save_predictions(results, output_dir="outputs"):
+    os.makedirs(output_dir, exist_ok=True)
+
+    # ---------------- JSON -----------------
+    json_path = os.path.join(output_dir, "predictions.json")
+    with open(json_path, "w") as f:
+        json.dump(results, f, indent=4)
+
+    # ---------------- CSV -----------------
+    rows = []
+    for target, info in results.items():
+        if "task" in info:
+            row = {"target": target, "task": info["task"]}
+            row.update(info.get("all_model_scores", {}))
+            row["best_model"] = info.get("best_model", "")
+            row["score"] = info.get("r2_score", info.get("accuracy", ""))
+            rows.append(row)
+    csv_path = os.path.join(output_dir, "predictions.csv")
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
+
+    # ---------------- PDF -----------------
+    pdf_path = os.path.join(output_dir, "report.pdf")
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt="Prediction Report", ln=True, align="C")
+    for target, info in results.items():
+        pdf.ln(5)
+        pdf.cell(0, 10, txt=f"Target: {target}", ln=True)
+        if "error" in info:
+            pdf.cell(0, 10, txt=f"Error: {info['error']}", ln=True)
+        else:
+            pdf.cell(0, 10, txt=f"Task: {info['task']}", ln=True)
+            pdf.cell(0, 10, txt=f"Best Model: {info['best_model']}", ln=True)
+            score = info.get("r2_score", info.get("accuracy", ""))
+            pdf.cell(0, 10, txt=f"Score: {score}", ln=True)
+    pdf.output(pdf_path)
+
+    return {"json": json_path, "csv": csv_path, "pdf": pdf_path}
