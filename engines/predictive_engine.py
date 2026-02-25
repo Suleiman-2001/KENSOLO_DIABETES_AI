@@ -1,11 +1,8 @@
 # engines/predictive_engine.py
-import os
-import json
 import numpy as np
 import pandas as pd
 import warnings
-from fpdf import FPDF
-from joblib import Parallel, delayed, parallel_backend
+from joblib import Parallel, delayed
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, accuracy_score
@@ -14,14 +11,19 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LinearRegression, LogisticRegression, Lasso, Ridge
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier, GradientBoostingRegressor, GradientBoostingClassifier
-from sklearn.svm import SVC
+from sklearn.svm import SVR, SVC
 from sklearn.neighbors import KNeighborsClassifier
 from xgboost import XGBRegressor, XGBClassifier
 
 warnings.filterwarnings("ignore")
 
-# ---------------- HELPER FUNCTIONS -----------------
+
 def _prepare_features(df, target, sparse=True, max_categories=20):
+    """
+    Prepare features for modeling:
+    - OneHotEncode categorical columns safely
+    - Limit one-hot encoding for high-cardinality columns
+    """
     y = df[target]
     X = df.drop(columns=[target])
     cat_cols = [c for c in X.columns if X[c].dtype == "object"]
@@ -43,11 +45,13 @@ def _prepare_features(df, target, sparse=True, max_categories=20):
     )
     return X, y, preprocessor
 
+
 def _fit_regression(name, model, X_train, y_train, X_test, y_test, preprocessor):
     pipe = Pipeline([("prep", preprocessor), ("model", model)])
     pipe.fit(X_train, y_train)
     preds = pipe.predict(X_test)
     return name, pipe, preds
+
 
 def _fit_classification(name, model, X_train, y_train, X_test, y_test, preprocessor):
     pipe = Pipeline([("prep", preprocessor), ("model", model)])
@@ -55,8 +59,16 @@ def _fit_classification(name, model, X_train, y_train, X_test, y_test, preproces
     preds = pipe.predict(X_test)
     return name, pipe, preds
 
-# ---------------- PREDICTIVE ENGINE -----------------
+
 def run_predictive_model(df, targets_dict, max_jobs=2, min_rows_regression=20, min_rows_classification=30):
+    """
+    Safe and optimized predictive engine:
+    - Sparse encoding for high-cardinality features
+    - Controlled parallelization (max_jobs)
+    - Sequential fallback for small datasets
+    - NaN-safe and small-sample-safe
+    - Limits high-cardinality categories automatically
+    """
     results = {}
 
     # ---------------- REGRESSION -----------------
@@ -91,11 +103,10 @@ def run_predictive_model(df, targets_dict, max_jobs=2, min_rows_regression=20, m
 
             use_parallel = len(models) >= 3 and len(X_train) >= min_rows_regression
             if use_parallel:
-                with parallel_backend('threading'):
-                    trained_models = Parallel(n_jobs=max_jobs)(
-                        delayed(_fit_regression)(name, model, X_train, y_train, X_test, y_test, preprocessor)
-                        for name, model in models.items()
-                    )
+                trained_models = Parallel(n_jobs=max_jobs)(
+                    delayed(_fit_regression)(name, model, X_train, y_train, X_test, y_test, preprocessor)
+                    for name, model in models.items()
+                )
             else:
                 trained_models = [_fit_regression(name, model, X_train, y_train, X_test, y_test, preprocessor)
                                   for name, model in models.items()]
@@ -164,11 +175,10 @@ def run_predictive_model(df, targets_dict, max_jobs=2, min_rows_regression=20, m
 
             use_parallel = len(models) >= 3 and len(X_train) >= min_rows_classification
             if use_parallel:
-                with parallel_backend('threading'):
-                    trained_models = Parallel(n_jobs=max_jobs)(
-                        delayed(_fit_classification)(name, model, X_train, y_train, X_test, y_test, preprocessor)
-                        for name, model in models.items()
-                    )
+                trained_models = Parallel(n_jobs=max_jobs)(
+                    delayed(_fit_classification)(name, model, X_train, y_train, X_test, y_test, preprocessor)
+                    for name, model in models.items()
+                )
             else:
                 trained_models = [_fit_classification(name, model, X_train, y_train, X_test, y_test, preprocessor)
                                   for name, model in models.items()]
@@ -200,39 +210,4 @@ def run_predictive_model(df, targets_dict, max_jobs=2, min_rows_regression=20, m
         except Exception as e:
             results[target] = {"error": str(e)}
 
-    # ---------------- SAVE RESULTS -----------------
-    _save_results(results)
     return results
-
-# ---------------- SAVE TO FILES -----------------
-def _save_results(results):
-    os.makedirs("outputs", exist_ok=True)
-
-    # Save JSON
-    with open("outputs/predictions.json", "w") as f:
-        json.dump(results, f, indent=4)
-
-    # Save CSV
-    csv_rows = []
-    for target, info in results.items():
-        if "sample_predictions" in info:
-            for i, pred in enumerate(info["sample_predictions"]):
-                csv_rows.append({
-                    "target": target,
-                    "model": info.get("best_model"),
-                    "row": i,
-                    "prediction": pred
-                })
-    pd.DataFrame(csv_rows).to_csv("outputs/predictions.csv", index=False)
-
-    # Save PDF report
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    for target, info in results.items():
-        pdf.cell(200, 10, txt=f"Target: {target}", ln=True)
-        pdf.cell(200, 10, txt=f"Task: {info.get('task')}", ln=True)
-        pdf.cell(200, 10, txt=f"Best model: {info.get('best_model')}", ln=True)
-        pdf.cell(200, 10, txt=f"Score: {info.get('r2_score') or info.get('accuracy')}", ln=True)
-        pdf.ln(5)
-    pdf.output("outputs/report.pdf")
