@@ -125,7 +125,6 @@ def run_predictive_model(df, targets_dict,
             results[target] = {
                 "task": "regression",
                 "best_model": best_name,
-                "best_model_pipeline": best_model,
                 "r2_score": round(float(best_score), 4),
                 "sample_predictions": [float(x) for x in sample_preds],
                 "all_model_scores": model_scores
@@ -190,7 +189,6 @@ def run_predictive_model(df, targets_dict,
             results[target] = {
                 "task": "classification",
                 "best_model": best_name,
-                "best_model_pipeline": best_model,
                 "accuracy": round(float(best_score), 4),
                 "sample_predictions": [str(x) for x in sample_preds],
                 "all_model_scores": model_scores
