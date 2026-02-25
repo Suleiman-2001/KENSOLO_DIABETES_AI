@@ -9,6 +9,52 @@ df = None
 column_types = None
 autofix = False
 # ----------------------------
+# Function to save predictions, recommendations, and report
+# ----------------------------
+def save_outputs(output):
+    import os
+    import json
+    import pandas as pd
+    from fpdf import FPDF
+
+    os.makedirs("outputs", exist_ok=True)
+
+    # Predictions JSON
+    with open("outputs/predictions.json", "w") as f:
+        json.dump(output.get("predictions", {}), f, indent=4)
+
+    # Recommendations JSON
+    with open("outputs/recommendations.json", "w") as f:
+        json.dump(output.get("recommendations", {}), f, indent=4)
+
+    # Predictions CSV
+    pred_rows = []
+    for target, items in output.get("predictions", {}).items():
+        for item in items:
+            row = item.copy() if isinstance(item, dict) else {"value": item}
+            row["target"] = target
+            pred_rows.append(row)
+    pd.DataFrame(pred_rows).to_csv("outputs/predictions.csv", index=False)
+
+    # Recommendations CSV
+    rec_rows = []
+    for target, rec_list in output.get("recommendations", {}).items():
+        for rec in rec_list:
+            row = rec.copy()
+            row["target"] = target
+            rec_rows.append(row)
+    pd.DataFrame(rec_rows).to_csv("outputs/recommendations.csv", index=False)
+
+    # Simple PDF Report
+    try:
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 16)
+        pdf.cell(0, 10, "KENSOLO AI Report", ln=True, align="C")
+        pdf.output("outputs/report.pdf")
+    except Exception as e:
+        st.warning(f"PDF report generation failed: {e}")
+# ----------------------------
 # MUST BE FIRST STREAMLIT COMMAND
 # ----------------------------
 st.set_page_config(page_title="KENSOLO AI", layout="wide")
@@ -339,7 +385,7 @@ if uploaded_file and autopilot_mode and not st.session_state.autopilot_ran:
             autofix=True,
             industry=industry_value
         )
-
+    save_outputs(st.session_state.output)
     st.success("✅ AI Analytics Autopilot Complete!")
 
 # Display output if exists
