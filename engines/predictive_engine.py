@@ -17,7 +17,10 @@ from sklearn.svm import SVR, SVC
 from sklearn.neighbors import KNeighborsClassifier
 from xgboost import XGBRegressor, XGBClassifier
 from fpdf import FPDF
-
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["JOBLIB_START_METHOD"] = "threading"
 warnings.filterwarnings("ignore")
 
 
