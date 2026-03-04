@@ -65,6 +65,8 @@ import matplotlib.pyplot as plt
 import warnings
 import numpy as np
 import base64
+import hashlib
+import uuid
 
 warnings.filterwarnings("ignore")  # suppress warnings
 
@@ -537,11 +539,11 @@ def parse_pasted_data(data_string, format_type="csv"):
                     delimiter = max(valid_delimiters.items(), key=lambda x: x[1])[0]
                 else:
                     # Fallback to whitespace if no clear delimiter
-                    delimiter = '\s+'
+                    delimiter = r'\s+'
             
             # Try parsing with detected delimiter
             try:
-                if delimiter == '\s+':
+                if delimiter == r'\s+':
                     # Whitespace: use Python engine for regex support
                     df = pd.read_csv(
                         StringIO(data_string), 
@@ -956,13 +958,15 @@ if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
         "outputs/recommendations.csv",
         "outputs/report.pdf",
     ]
-    for file_name in downloadable_files:
+    for i, file_name in enumerate(downloadable_files):
         if os.path.exists(file_name):
             with open(file_name, "rb") as f:
+                unique_id = uuid.uuid4().hex
                 st.download_button(
                     f"Download {os.path.basename(file_name)}",
                     f,
-                    file_name=os.path.basename(file_name)
+                    file_name=os.path.basename(file_name),
+                    key=f"download_btn_{i}_{unique_id}"
                 )
         else:
             st.info(f"Not generated yet: {file_name}")
@@ -975,76 +979,8 @@ if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
         st.download_button(
             "Download Adaptive Insights JSON",
             data=pd.Series(adaptive_insights).to_json(),
-            file_name="adaptive_insights.json"
-        )
-    else:
-        st.info("No adaptive insights generated.")
-
-# Display output if exists
-if st.session_state.output:
-    output = st.session_state.output
-    
-    # Wrap KPI Cards in expander to prevent widget reruns from affecting analysis
-    with st.expander("📊 Key Performance Indicators (KPIs)", expanded=True):
-        if df is not None:
-            display_kpi_cards(df, output)
-
-    sections = [
-        ("🛠 Problem Discovery", "problem_discovery"),
-        ("📌 Business Intelligence", "business_insights"),
-        (f"💡 Industry Smart Insights ({industry_value})", "industry_insights"),
-        ("📊 Predictions", "predictions"),
-        ("🎯 Recommendations", "recommendations"),
-        ("🧪 Self-Critic", "self_critic"),
-        ("🧠 Decision Intelligence", "decision_intelligence")
-    ]
-
-    for title, key in sections:
-        st.subheader(title)
-        st.json(output.get(key) or {})
-
-    # Graphs
-    st.subheader("📈 Graphs")
-    graph_folder = output.get("graph_folder") or "outputs/graphs"
-    if os.path.exists(graph_folder):
-        graphs = [f for f in os.listdir(graph_folder) if f.endswith(".png")]
-        if graphs:
-            for g in sorted(graphs):
-                st.image(os.path.join(graph_folder, g), caption=g, use_container_width=True)
-        else:
-            st.warning("No graphs found in graph folder.")
-    else:
-        st.warning("Graph folder does not exist.")
-
-    # Downloads
-    st.subheader("💾 Download Outputs")
-    downloadable_files = [
-        "outputs/predictions.json",
-        "outputs/recommendations.json",
-        "outputs/predictions.csv",
-        "outputs/recommendations.csv",
-        "outputs/report.pdf",
-    ]
-    for file_name in downloadable_files:
-        if os.path.exists(file_name):
-            with open(file_name, "rb") as f:
-                st.download_button(
-                    f"Download {os.path.basename(file_name)}",
-                    f,
-                    file_name=os.path.basename(file_name)
-                )
-        else:
-            st.info(f"Not generated yet: {file_name}")
-
-    # Adaptive / Self-Learning Insights
-    st.subheader("💡 Adaptive / Self-Learning Insights")
-    adaptive_insights = output.get("adaptive_insights") or {}
-    if adaptive_insights:
-        st.json(adaptive_insights)
-        st.download_button(
-            "Download Adaptive Insights JSON",
-            data=pd.Series(adaptive_insights).to_json(),
-            file_name="adaptive_insights.json"
+            file_name="adaptive_insights.json",
+            key="adaptive_insights_download"
         )
     else:
         st.info("No adaptive insights generated.")
