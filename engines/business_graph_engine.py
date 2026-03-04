@@ -172,5 +172,29 @@ def generate_business_graphs(df, business_insights, folder="outputs/graphs"):
     )
     if p8: saved.append(p8)
 
-    print(f"✅ Business graphs saved: {len(saved)} files in {folder}")
+    if saved:
+        print(f"Business graphs saved: {len(saved)} files in {folder}")
+        return saved
+
+    # nothing produced – log diagnostic info and emit fallback histograms
+    print(f"No business-specific graphs could be generated (folder={folder}).")
+    # show detected warnings if available
+    det = business_insights.get("detected_columns") if isinstance(business_insights, dict) else None
+    if det and det.get("warnings"):
+        print("Detection warnings:", det.get("warnings"))
+
+    # attempt generic numeric histograms as a fallback so folder isn't empty
+    try:
+        from .vision_engine import generate_graphs as _gen_hist
+        numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c].dtype)]
+        if numeric_cols:
+            print(f"Generating fallback histograms for numeric columns: {numeric_cols}")
+            fallback = _gen_hist(df, {"numerical": numeric_cols, "categorical": []}, folder=folder)
+            saved.extend(fallback)
+            if fallback:
+                print(f"{len(fallback)} fallback histogram(s) saved in {folder}")
+    except Exception as e:
+        print(f"Fallback histogram generation failed: {e}")
+
+    print(f"Business graphs saved: {len(saved)} files in {folder}")
     return saved

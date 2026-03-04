@@ -22,7 +22,7 @@ def generate_graphs(df, targets_dict, folder="outputs/graphs"):
             plt.close()
             graph_paths.append(path)
 
-    print(f"✅ Graphs saved in folder: {folder}")
+    print(f"Graphs saved in folder: {folder}")
     return graph_paths
 
 # ----------------------------

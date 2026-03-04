@@ -41,6 +41,39 @@ os.makedirs(POWERBI_FOLDER, exist_ok=True)
 CHUNK_SIZE = 100_000  # Adjustable
 MAX_PROCESSES = min(4, os.cpu_count() or 1)  # Dynamically adjust based on CPU
 
+
+def _coerce_dataframe_types(df):
+    """Coerce common column types to usable pandas/numpy dtypes.
+
+    - Convert pandas StringDtype to object for downstream libs that expect numpy dtypes.
+    - Parse columns with 'date'/'time' in their name to datetime where possible.
+    - Convert object columns that look numeric to numeric (if >50% parseable).
+    Returns a new DataFrame (shallow copy) with coerced columns.
+    """
+    out = df.copy()
+    for col in out.columns:
+        try:
+            # Convert pandas nullable StringDtype to object
+            if pd.api.types.is_string_dtype(out[col].dtype):
+                out[col] = out[col].astype(object)
+
+            # Try date/time parsing for obvious column names
+            if "date" in col.lower() or "time" in col.lower():
+                parsed = pd.to_datetime(out[col], errors="coerce")
+                if parsed.notna().sum() > 0:
+                    out[col] = parsed
+
+            # If object column, check if majority can be numeric and coerce
+            if pd.api.types.is_object_dtype(out[col].dtype):
+                coerced = pd.to_numeric(out[col], errors="coerce")
+                non_null = coerced.notna().sum()
+                if non_null / max(1, len(coerced)) > 0.5:
+                    out[col] = coerced
+        except Exception:
+            # Best-effort coercion — ignore failures per-column
+            continue
+    return out
+
 # ----------------------------
 # Helper to process heavy engines per chunk
 # ----------------------------
@@ -50,7 +83,14 @@ def process_chunk(chunk_df, column_types, industry=None):
         results["problem_discovery"] = discover_problem(chunk_df)
         text_cols = [c for c, t in column_types.items() if t == "text"]
         results["nlp_features"] = run_nlp_analysis(chunk_df, text_columns=text_cols) if text_cols else None
-        numerical_cols = [c for c, t in column_types.items() if t == "numerical"]
+        # build numerical targets but skip any datetime columns (could have slipped through earlier)
+        numerical_cols = []
+        for c, t in column_types.items():
+            if t == "numerical":
+                # double-check dtype on the chunk
+                if not (pd.api.types.is_datetime64_any_dtype(chunk_df[c].dtype) or
+                        pd.api.types.is_datetime64tz_dtype(chunk_df[c].dtype)):
+                    numerical_cols.append(c)
         targets_dict = {"numerical": numerical_cols, "categorical": []}
         results["predictions"] = run_predictive_model(chunk_df, targets_dict)
         results["graph_files"] = generate_graphs(chunk_df, targets_dict, folder=GRAPH_FOLDER)
@@ -100,6 +140,15 @@ def route_to_engines(df, column_types, autofix=True, industry=None, query=None):
     # =========================================================
     working_df = df  # removed copy.deepcopy(df)
 
+    # =========================================================
+    # 1.1️⃣ Coerce common column dtypes so downstream ML libs don't choke
+    # =========================================================
+    try:
+        working_df = _coerce_dataframe_types(working_df)
+        print("ℹ️ Coerced dataframe dtypes for ML compatibility")
+    except Exception as e:
+        print(f"⚠️ Type coercion failed: {e}")
+
     print(f"⚡ Dataset size: {len(working_df)} rows")
 
     # =========================================================
@@ -118,22 +167,29 @@ def route_to_engines(df, column_types, autofix=True, industry=None, query=None):
             print(f"⚠️ Autofix failed: {e}")
             working_df = df
 
-        column_types = {
-            col: ("text" if working_df[col].dtype == "object" else "numerical")
-            for col in working_df.columns
-        }
+    # Recompute column types after coercion/autofix so downstream engines get correct hints
+    column_types = {}
+    for col in working_df.columns:
+        dtype = working_df[col].dtype
+        if pd.api.types.is_datetime64_any_dtype(dtype) or pd.api.types.is_datetime64tz_dtype(dtype):
+            column_types[col] = "datetime"
+        elif dtype == "object":
+            column_types[col] = "text"
+        else:
+            column_types[col] = "numerical"
+
 
     # =========================================================
     # 3️⃣ Industry Insights (UNCHANGED)
     # =========================================================
     industry_insights = {}
     if industry:
-             try:
-                    industry_insights = generate_industry_insights(working_df)  # no second import needed
-                    print(f"💡 Industry insights generated: {len(industry_insights)} items")
-             except Exception as e:
-                    industry_insights = {"error": str(e)}
-                    print(f"⚠️ Industry Smart Mode failed: {e}")
+        try:
+            industry_insights = generate_industry_insights(working_df)  # no second import needed
+            print(f"💡 Industry insights generated: {len(industry_insights)} items")
+        except Exception as e:
+            industry_insights = {"error": str(e)}
+            print(f"⚠️ Industry Smart Mode failed: {e}")
 
 
     # =========================================================

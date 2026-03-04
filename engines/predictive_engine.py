@@ -20,7 +20,7 @@ from fpdf import FPDF
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["JOBLIB_START_METHOD"] = "threading"
+os.environ["JOBLIB_START_METHOD"] = "spawn"
 warnings.filterwarnings("ignore")
 
 
@@ -30,8 +30,27 @@ def _prepare_features(df, target, sparse=True, max_categories=20):
     y = df[target]
     X = df.drop(columns=[target])
 
+    # drop any datetime columns from features – sklearn can't handle them directly
+    date_cols = [c for c in X.columns if pd.api.types.is_datetime64_any_dtype(X[c].dtype) or pd.api.types.is_datetime64tz_dtype(X[c].dtype)]
+    if date_cols:
+        X = X.drop(columns=date_cols)
+
     cat_cols = [c for c in X.columns if X[c].dtype == "object"]
     num_cols = [c for c in X.columns if np.issubdtype(X[c].dtype, np.number)]
+
+    # Ensure pandas StringDtype or other non-numpy dtypes are converted
+    # so sklearn and OneHotEncoder receive numpy-compatible dtypes.
+    for c in X.columns:
+        try:
+            if pd.api.types.is_string_dtype(X[c].dtype) and X[c].dtype != object:
+                X[c] = X[c].astype(object)
+            if pd.api.types.is_object_dtype(X[c].dtype):
+                # If majority of values parse as numeric, convert to numeric
+                coerced = pd.to_numeric(X[c], errors="coerce")
+                if coerced.notna().sum() / max(1, len(coerced)) > 0.5:
+                    X[c] = coerced
+        except Exception:
+            continue
 
     limited_cat_cols = []
     for col in cat_cols:
@@ -78,6 +97,11 @@ def run_predictive_model(df, targets_dict,
 
             if target not in df.columns:
                 results[target] = {"error": "Target not in dataframe"}
+                continue
+
+            # skip datetime targets – regression on dates isn't supported
+            if pd.api.types.is_datetime64_any_dtype(df[target].dtype) or pd.api.types.is_datetime64tz_dtype(df[target].dtype):
+                results[target] = {"error": "Target has datetime dtype; prediction skipped"}
                 continue
 
             clean_df = df.dropna(subset=[target])
