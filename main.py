@@ -4,6 +4,23 @@ import pandas as pd
 from tkinter import Tk
 from tkinter.filedialog import askopenfilename
 
+from pymongo import MongoClient
+
+# MongoDB Atlas connection string
+client = MongoClient("mongodb+srv://KENSOLOAI:Jecintamugure123@cluster0.lkkaqnv.mongodb.net/?appName=Cluster0")
+
+# Create database and collection
+db = client["kensolo_ai"]
+collection = db["predictions"]
+
+# Test inserting data
+collection.insert_one({
+    "dataset": "test_dataset.csv",
+    "prediction": "High demand next month",
+    "recommendation": "Increase inventory"
+})
+
+print("✅ MongoDB connected and test data inserted")
 # ----------------------------
 # Suppress unnecessary warnings
 # ----------------------------

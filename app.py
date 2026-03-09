@@ -1,3 +1,10 @@
+from pymongo import MongoClient
+
+# Connect to your Atlas cluster
+client = MongoClient("mongodb+srv://KENSOLOAI:Jecintamugure123@cluster0.lkkaqnv.mongodb.net/?appName=Cluster0")
+db = client["kensolo_ai"]  # Database name
+collection = db["analysis"]  # Collection name
+
 import sys, os
 sys.path.append(os.path.abspath(os.getcwd()))
 
@@ -852,6 +859,7 @@ if df is not None:
 # ----------------------------
 # Run AI Analysis (Manual)
 # ----------------------------
+
 if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
     st.session_state.analysis_done = False  # Reset flag during analysis
     with st.spinner("🚀 Running AI analysis..."):
@@ -875,6 +883,21 @@ if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
         import json
         import os
         import pandas as pd
+        # Save outputs to MongoDB
+if df is not None and st.session_state.output:
+    output_doc = {
+        "dataset_name": uploaded_file.name if uploaded_file else "pasted_data",
+        "timestamp": pd.Timestamp.now().isoformat(),
+        "industry": industry_value,
+        "predictions": st.session_state.output.get("predictions"),
+        "recommendations": st.session_state.output.get("recommendations"),
+        "adaptive_insights": st.session_state.output.get("adaptive_insights")
+    }
+    try:
+        collection.insert_one(output_doc)
+        st.success("✅ Analysis saved to MongoDB Atlas!")
+    except Exception as e:
+        st.error(f"Failed to save to MongoDB: {e}")
         os.makedirs("outputs", exist_ok=True)
 
         output = st.session_state.output
