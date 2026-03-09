@@ -22,6 +22,7 @@ Pillow==12.1.0
 
 # Logging / pretty printing
 rich>=10.14.0,<14
+pymongo==4.7.2
 
 # Machine learning / NLP
 scikit-learn==1.3.2
