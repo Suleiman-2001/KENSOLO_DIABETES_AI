@@ -1250,15 +1250,22 @@ else:
 
     if TALK_ENABLED:
         st.subheader("💬 Talk to Your Data AI")
-        user_question = st.text_input("Ask a question about your data (e.g., 'Top 5 Amount outliers')")
-        if st.button("Ask AI", key="talk_to_data_btn") and user_question:
-            with st.spinner("🤖 Generating answer..."):
-                answer = talk_to_data_ai(df, query=user_question)
-                display_ai_answer(answer)
-    else:
-        display_ai_answer("Talk-to-Your-Data AI module not installed. Skipping.")
+    user_question = st.text_input("Ask a question about your data (e.g., 'Top 5 Amount outliers')")
 
-    # ----------------------------
+    if st.button("Ask AI", key="talk_to_data_btn") and user_question:
+        with st.spinner("🤖 Generating answer..."):
+            output = talk_to_data_ai(df, query=user_question)
+            st.session_state.output = output  # save to session
+
+            # Safely display answer
+            answer_text = output.get("answer", "No answer returned") if output else "No output generated"
+            display_ai_answer(answer_text)
+
+            # Save outputs
+            save_outputs(st.session_state.output)
+            st.success("✅ Predictions and recommendations saved to 'outputs/' folder!")
+    else:
+        display_ai_answer("Talk-to-Your-Data AI module not installed. Skipping.") # ----------------------------
     # AI Analytics Autopilot
     # ----------------------------
     st.subheader("🤖 AI Analytics Autopilot")
