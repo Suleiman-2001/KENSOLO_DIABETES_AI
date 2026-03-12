@@ -1,5 +1,6 @@
 from pymongo import MongoClient
-
+import seaborn as sns
+import plotly.express as px
 # Connect to your Atlas cluster
 client = MongoClient("mongodb+srv://KENSOLOAI:Jecintamugure123@cluster0.lkkaqnv.mongodb.net/?appName=Cluster0")
 db = client["kensolo_ai"]  # Database name
@@ -421,7 +422,75 @@ def display_kpi_cards(df, output):
                     st.pyplot(fig)
         else:
             st.info("No predictions available. Run AI Analysis to generate predictions.")
+# ----------------------------
+# P&L Dashboard
+# ----------------------------
+def display_pl_dashboard(df):
+    st.subheader("💰 Profit & Loss Dashboard")
 
+    # Try detecting financial columns automatically
+    revenue_cols = [c for c in df.columns if "revenue" in c.lower() or "sales" in c.lower()]
+    cost_cols = [c for c in df.columns if "cost" in c.lower() or "expense" in c.lower()]
+    profit_cols = [c for c in df.columns if "profit" in c.lower()]
+
+    if not revenue_cols or not cost_cols:
+        st.info("Dataset does not appear to contain financial columns (revenue/cost).")
+        return
+
+    revenue_col = revenue_cols[0]
+    cost_col = cost_cols[0]
+
+    if profit_cols:
+        profit_col = profit_cols[0]
+    else:
+        df["Profit"] = df[revenue_col] - df[cost_col]
+        profit_col = "Profit"
+
+    # ----------------------------
+    # KPI Metrics
+    # ----------------------------
+    total_revenue = df[revenue_col].sum()
+    total_cost = df[cost_col].sum()
+    total_profit = df[profit_col].sum()
+    margin = (total_profit / total_revenue) * 100 if total_revenue != 0 else 0
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric("Total Revenue", f"${total_revenue:,.2f}")
+    col2.metric("Total Cost", f"${total_cost:,.2f}")
+    col3.metric("Total Profit", f"${total_profit:,.2f}")
+    col4.metric("Profit Margin", f"{margin:.2f}%")
+
+    st.divider()
+
+    # ----------------------------
+    # Revenue vs Cost Chart
+    # ----------------------------
+    st.write("### Revenue vs Cost")
+
+    fig, ax = plt.subplots(figsize=(8,4))
+    ax.plot(df[revenue_col].values, label="Revenue")
+    ax.plot(df[cost_col].values, label="Cost")
+    ax.legend()
+    ax.set_title("Revenue vs Cost Trend")
+    st.pyplot(fig)
+
+    # ----------------------------
+    # Profit Distribution
+    # ----------------------------
+    st.write("### Profit Distribution")
+
+    fig2, ax2 = plt.subplots(figsize=(8,4))
+    df[profit_col].hist(bins=30, ax=ax2)
+    ax2.set_title("Profit Distribution")
+    st.pyplot(fig2)
+
+    # ----------------------------
+    # Top Profit Records
+    # ----------------------------
+    st.write("### Top Profit Records")
+    top_profit = df.sort_values(profit_col, ascending=False).head(10)
+    st.dataframe(top_profit)
 # ----------------------------
 # Industry Selection
 # ----------------------------
@@ -738,11 +807,371 @@ elif "pasted_df" in st.session_state:
     df = st.session_state.pasted_df
 
 if df is not None:
+     # show KPI cards
+    display_kpi_cards(df, st.session_state.output)
+
+    # show P&L dashboard
+    display_pl_dashboard(df)
+    # ----------------------------
+# -----------------------------
+# -----------------------------
+# Safe correlation heatmap function
+# -----------------------------
+def safe_corr_heatmap(df, numeric_cols):
+    if numeric_cols:  # check if there are numeric columns
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.heatmap(df[numeric_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
+        st.pyplot(fig)
+    else:
+        st.info("No numeric columns found for correlation heatmap.")
+
+# -----------------------------
+# Check if dataframe is loaded
+# -----------------------------
+if df is not None and not df.empty:
+    numeric_cols = df.select_dtypes(include='number').columns.tolist()
+    cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+    date_cols = df.select_dtypes(include=['datetime64']).columns.tolist()
+else:
+    numeric_cols, cat_cols, date_cols = [], [], []
+
+# -----------------------------
+# Dashboard Tabs
+# -----------------------------
+if numeric_cols:
+    st.subheader("📊 AI Data Analytics Dashboard Tabs")
+    tab1, tab2, tab3 = st.tabs(["Correlation Heatmap", "Scatter Plot", "Other Charts"])
+
+    # ---------------------
+    # Tab 1: Correlation Heatmap
+    # ---------------------
+    with tab1:
+        st.write("### Correlation Heatmap")
+        safe_corr_heatmap(df, numeric_cols)
+
+    # ---------------------
+    # Tab 2: Scatter Plot Explorer
+    # ---------------------
+    with tab2:
+        st.write("### Scatter Plot Explorer")
+        if len(numeric_cols) >= 2:
+            x_axis = st.selectbox(
+                "X-axis",
+                numeric_cols,
+                key=f"scatter_x_tab2_{'_'.join(numeric_cols)}"
+            )
+            y_axis = st.selectbox(
+                "Y-axis",
+                numeric_cols,
+                key=f"scatter_y_tab2_{'_'.join(numeric_cols)}"
+            )
+            fig_scatter = px.scatter(
+                df,
+                x=x_axis,
+                y=y_axis,
+                title=f"{x_axis} vs {y_axis}",
+                color=None
+            )
+            st.plotly_chart(
+                fig_scatter,
+                use_container_width=True,
+                key=f"scatter_chart_tab2_{x_axis}_{y_axis}"
+            )
+        else:
+            st.info("Need at least 2 numeric columns to create scatter plots.")
+
+    # ---------------------
+    # Tab 3: Other Charts Example
+    # ---------------------
+    with tab3:
+        st.write("### Line Chart Example")
+        col = st.selectbox(
+            "Select Column",
+            numeric_cols,
+            key=f"line_col_tab3_{'_'.join(numeric_cols)}"
+        )
+        fig_line = px.line(df, y=col, title=f"Line Chart of {col}")
+        st.plotly_chart(
+            fig_line,
+            use_container_width=True,
+            key=f"line_chart_tab3_{col}"
+        )
+
+else:
+    st.warning("No numeric columns found in your dataset for visualization.")
+#----------------------------
+import plotly.express as px
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+st.subheader("📊 Automatic Data Visualizations")
+
+# ----------------------------
+# AUTOMATIC DATA VISUALIZATIONS (WITH UNIQUE KEYS)
+# ----------------------------
+st.subheader("📊 Automatic Data Visualizations")
+
+if df is not None:
+    numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+    cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+    date_cols = df.select_dtypes(include=['datetime64']).columns.tolist()
+else:
+    numeric_cols, cat_cols, date_cols = [], [], []
+
+tab1, tab2, tab3, tab4 = st.tabs([
+    "Distributions",
+    "Relationships",
+    "Categories",
+    "Time Series"
+])
+
+# ----------------------------
+# 1️⃣ Numeric Distributions
+# ----------------------------
+with tab1:
+    if numeric_cols:
+        st.write("### Numeric Distributions")
+        for col in numeric_cols[:4]:
+            fig = px.histogram(df, x=col, nbins=30, title=f"Distribution of {col}")
+            st.plotly_chart(fig, use_container_width=True, key=f"hist_{col}")
+
+        st.write("### Boxplots (Outlier Detection)")
+        col_choice = st.selectbox("Select numeric column for boxplot", numeric_cols)
+        fig = px.box(df, y=col_choice, title=f"Outliers in {col_choice}")
+        st.plotly_chart(fig, use_container_width=True, key=f"box_{col_choice}")
+    else:
+        st.info("No numeric columns available for visualization.")
+
+# ----------------------------
+# 2️⃣ Relationships
+# ----------------------------
+with tab2:
+    st.write("### Scatter Plot Explorer")
+
+    # Check if there are at least 2 numeric columns
+    if len(numeric_cols) >= 2:
+        # Unique keys for Streamlit widgets
+        x_axis = st.selectbox("Select X-axis", numeric_cols, key="scatter_x_tab2")
+        y_axis = st.selectbox("Select Y-axis", numeric_cols, key="scatter_y_tab2")
+
+        # Create scatter plot using Plotly
+        fig_scatter = px.scatter(
+            df,
+            x=x_axis,
+            y=y_axis,
+            title=f"{x_axis} vs {y_axis}",
+            labels={x_axis: x_axis, y_axis: y_axis},
+        )
+        st.plotly_chart(fig_scatter, use_container_width=True, key=f"scatter_chart_tab2")
+
+        # Optional: show correlation heatmap below
+        st.write("### Correlation Heatmap")
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.heatmap(df[numeric_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
+        st.pyplot(fig)
+
+    else:
+        st.info("Need at least two numeric columns to create scatter plots.")
+# ----------------------------
+# 3️⃣ Categorical Analysis
+# ----------------------------
+with tab3:
+    if cat_cols:
+        st.write("### Category Frequency")
+        cat_col = st.selectbox("Select categorical column", cat_cols)
+        counts = df[cat_col].value_counts().reset_index()
+        counts.columns = [cat_col, "count"]
+        fig = px.bar(counts, x=cat_col, y="count", title=f"{cat_col} Distribution")
+        st.plotly_chart(fig, use_container_width=True, key=f"bar_{cat_col}")
+    else:
+        st.info("No categorical columns detected.")
+
+# ----------------------------
+# 4️⃣ Time Series Analysis
+# ----------------------------
+with tab4:
+    if date_cols and numeric_cols:
+        st.write("### Time Series Trends")
+        date_col = st.selectbox("Select date column", date_cols)
+        value_col = st.selectbox("Select value column", numeric_cols)
+        df_sorted = df.sort_values(date_col)
+        fig = px.line(df_sorted, x=date_col, y=value_col, title=f"{value_col} over time")
+        st.plotly_chart(fig, use_container_width=True, key=f"line_{value_col}_{date_col}")
+    else:
+        st.info("Requires at least one datetime column and one numeric column.")
+# ----------------------------
+# END OF AUTOMATIC VISUALIZATIONS
+# ----------------------------
+
+# Tabs for cleaner UI
+tab1, tab2, tab3, tab4 = st.tabs([
+    "Distributions",
+    "Relationships",
+    "Categories",
+    "Time Series"
+])
+
+# ----------------------------
+# NUMERIC DISTRIBUTIONS
+# ----------------------------
+with tab1:
+
+    if len(numeric_cols) > 0:
+
+        st.write("### Numeric Distributions")
+
+        for col in numeric_cols[:4]:
+
+            fig = px.histogram(
+                df,
+                x=col,
+                nbins=30,
+                title=f"Distribution of {col}"
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.write("### Boxplots (Outlier Detection)")
+
+        col_choice = st.selectbox(
+            "Select numeric column",
+            numeric_cols,
+            key="boxplot_column"
+        )
+
+        fig = px.box(
+            df,
+            y=col_choice,
+            title=f"Outliers in {col_choice}"
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    else:
+        st.info("No numeric columns available.")
+
+# ----------------------------
+# RELATIONSHIPS
+# ----------------------------
+with tab2:
+
+    if len(numeric_cols) >= 2:
+
+        st.write("### Scatter Plot Explorer")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            x_axis = st.selectbox(
+                "Select X-axis",
+                numeric_cols,
+                key="scatter_x"
+            )
+
+        with col2:
+            y_axis = st.selectbox(
+                "Select Y-axis",
+                numeric_cols,
+                key="scatter_y"
+            )
+
+        fig = px.scatter(
+            df,
+            x=x_axis,
+            y=y_axis,
+            title=f"{x_axis} vs {y_axis}"
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.write("### Correlation Heatmap")
+
+        fig, ax = plt.subplots(figsize=(10,6))
+
+        sns.heatmap(
+            df[numeric_cols].corr(),
+            annot=True,
+            cmap="coolwarm",
+            ax=ax
+        )
+
+        st.pyplot(fig)
+
+    else:
+        st.info("Need at least two numeric columns for relationship analysis.")
+
+# ----------------------------
+# CATEGORICAL ANALYSIS
+# ----------------------------
+with tab3:
+
+    if len(cat_cols) > 0:
+
+        st.write("### Category Frequency")
+
+        cat_col = st.selectbox(
+            "Select category column",
+            cat_cols,
+            key="category_column"
+        )
+
+        counts = df[cat_col].value_counts().reset_index()
+
+        counts.columns = [cat_col, "count"]
+
+        fig = px.bar(
+            counts,
+            x=cat_col,
+            y="count",
+            title=f"{cat_col} Distribution"
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    else:
+        st.info("No categorical columns detected.")
+
+# ----------------------------
+# TIME SERIES ANALYSIS
+# ----------------------------
+with tab4:
+
+    if len(date_cols) > 0 and len(numeric_cols) > 0:
+
+        st.write("### Time Series Trends")
+
+        date_col = st.selectbox(
+            "Select date column",
+            date_cols,
+            key="time_date"
+        )
+
+        value_col = st.selectbox(
+            "Select value column",
+            numeric_cols,
+            key="time_value"
+        )
+
+        df_sorted = df.sort_values(date_col)
+
+        fig = px.line(
+            df_sorted,
+            x=date_col,
+            y=value_col,
+            title=f"{value_col} over time"
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    else:
+        st.info("Dataset does not contain datetime columns.")
 
     # ----------------------------
-    # Autofix
-    # ----------------------------
+# Autofix + Column Types (Safe)
+# ----------------------------
+if df is not None and not df.empty:
     autofix = st.checkbox("Enable Autofix Mode (auto-fill missing / remove constant columns)")
+    
     if autofix:
         try:
             df, autofix_summary = apply_autofix(df)
@@ -762,6 +1191,7 @@ if df is not None:
         except Exception as e:
             st.error(f"Autofix failed: {e}")
 
+    # Detect column types safely
     column_types = {}
     for col in df.columns:
         dtype = df[col].dtype
@@ -771,7 +1201,9 @@ if df is not None:
             column_types[col] = "text"
         else:
             column_types[col] = "numerical"
-
+else:
+    column_types = {}
+    st.info("No dataset loaded. Upload or paste data to enable Autofix and column analysis.")
     # ----------------------------
     # Power BI Export
     # ----------------------------
