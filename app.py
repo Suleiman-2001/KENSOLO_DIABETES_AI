@@ -838,7 +838,7 @@ if df is not None:
 
     # show P&L dashboard
     display_pl_dashboard(df)
-    
+
 
 # -----------------------------
 # 3️⃣ Feature Engineering & Dynamic Dashboard (Fully Dynamic)
@@ -1512,6 +1512,7 @@ if df is not None and st.session_state.output:
     # Display Outputs
     # ----------------------------
     output = st.session_state.output
+    save_outputs(output)
     sections = [
         ("🛠 Problem Discovery", "problem_discovery"),
         ("📌 Business Intelligence", "business_insights"),
