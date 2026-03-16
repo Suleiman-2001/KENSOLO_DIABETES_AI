@@ -63,6 +63,32 @@ def save_outputs(output):
     except Exception as e:
         st.warning(f"PDF report generation failed: {e}")
 # ----------------------------
+# Display & Download Generated Files
+# ----------------------------
+def display_generated_files():
+    import os, json, pandas as pd, streamlit as st
+
+    output_folder = "outputs"
+    files = {
+        "Predictions CSV": os.path.join(output_folder, "predictions.csv"),
+        "Recommendations CSV": os.path.join(output_folder, "recommendations.csv"),
+        "Recommendations JSON": os.path.join(output_folder, "recommendations.json"),
+        "Report PDF": os.path.join(output_folder, "report.pdf")
+    }
+
+    for name, path in files.items():
+        if os.path.exists(path):
+            st.write(f"**{name}:**")
+            if path.endswith(".csv"):
+                df_file = pd.read_csv(path)
+                st.dataframe(df_file.head(), use_container_width=True)
+            elif path.endswith(".json"):
+                with open(path) as f:
+                    st.json(json.load(f))
+            st.download_button(f"Download {name}", open(path, "rb"), file_name=os.path.basename(path))
+        else:
+            st.warning(f"{name} not generated yet. Run analysis to create it.")
+# ----------------------------
 # MUST BE FIRST STREAMLIT COMMAND
 # ----------------------------
 st.set_page_config(page_title="KENSOLO AI", layout="wide")
@@ -812,7 +838,109 @@ if df is not None:
 
     # show P&L dashboard
     display_pl_dashboard(df)
-    # ----------------------------
+    
+
+# -----------------------------
+# 3️⃣ Feature Engineering & Dynamic Dashboard (Fully Dynamic)
+# -----------------------------
+if df is not None and not df.empty:
+    df_filtered = df.copy()
+
+    # -----------------------------
+    # Sidebar Filters (Dynamic for ALL Categorical Columns)
+    # -----------------------------
+    st.sidebar.title("Filter & Search")
+    categorical_cols = df_filtered.select_dtypes(include=['object', 'category']).columns.tolist()
+
+    for col in categorical_cols:
+        unique_vals = df_filtered[col].dropna().unique().tolist()
+        if unique_vals:
+            # Use ALL unique values as default (truly dynamic)
+            selected = st.sidebar.multiselect(f"Filter {col}", options=unique_vals, default=unique_vals)
+            df_filtered = df_filtered[df_filtered[col].isin(selected)]
+
+    # -----------------------------
+    # Feature Engineering (Optional)
+    # -----------------------------
+    numeric_cols = df_filtered.select_dtypes(include=np.number).columns.tolist()
+    
+    # Dynamic numeric feature if stock-like columns exist
+    if 'Open' in df_filtered.columns and 'Close' in df_filtered.columns:
+        df_filtered['Daily_Return'] = (df_filtered['Close'] - df_filtered['Open']) / df_filtered['Open']
+        df_filtered['High_Risk'] = df_filtered['Daily_Return'].apply(lambda x: 'Yes' if abs(x) > 0.05 else 'No')
+        if 'High_Risk' not in categorical_cols:
+            categorical_cols.append('High_Risk')
+
+    # -----------------------------
+    # Interactive Plots (Dynamic)
+    # -----------------------------
+    st.title("📈 Data Dashboard")
+
+    # X-axis: prefer 'Date', else first non-numeric, else first numeric
+    x_candidates = df_filtered.select_dtypes(exclude=np.number).columns.tolist()
+    if 'Date' in df_filtered.columns:
+        x_col = 'Date'
+    elif x_candidates:
+        x_col = x_candidates[0]
+    elif numeric_cols:
+        x_col = numeric_cols[0]
+    else:
+        x_col = None
+
+    # Y-axis: any numeric column
+    y_col = st.selectbox("Select Column to Plot", numeric_cols) if numeric_cols else None
+
+    if x_col and y_col:
+        fig = px.line(df_filtered, x=x_col, y=y_col, title=f"{y_col} Trend vs {x_col}")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Not enough columns to generate a plot.")
+
+    # -----------------------------
+    # Summary Statistics
+    # -----------------------------
+    st.subheader("Summary Statistics")
+    if numeric_cols:
+        st.write(df_filtered[numeric_cols].describe())
+    else:
+        st.info("No numeric columns to summarize.")
+
+    # -----------------------------
+    # Column Management (Dynamic)
+    # -----------------------------
+    st.subheader("📊 Column Management")
+    cols_to_remove = st.multiselect("Remove Columns", df_filtered.columns.tolist())
+    cols_to_add = st.text_input("Add New Calculated Column (example: Col1 - Col2)", placeholder="e.g., Col1 - Col2")
+
+    df_manage = df_filtered.copy()
+    if cols_to_remove:
+        df_manage = df_manage.drop(columns=cols_to_remove)
+    if cols_to_add:
+        try:
+            df_manage[cols_to_add] = df_manage.eval(cols_to_add)
+            st.success(f"Column '{cols_to_add}' added!")
+        except Exception as e:
+            st.error(f"Failed to add column: {e}")
+
+    st.write(df_manage.head(10))
+
+    # -----------------------------
+    # Search in Dataset (Dynamic)
+    # -----------------------------
+    st.subheader("🔍 Search in Dataset")
+    if not df_manage.empty:
+        search_col = st.selectbox("Column to Search", df_manage.columns)
+        search_val = st.text_input("Value to Search For")
+        if search_val:
+            search_results = df_manage[
+                df_manage[search_col].astype(str).str.strip().str.upper().str.contains(search_val.strip().upper())
+            ]
+            if not search_results.empty:
+                st.write(search_results)
+            else:
+                st.info(f"No results found for '{search_val}' in column '{search_col}'")
+else:
+    st.warning("No dataset loaded or dataset is empty.")
 # -----------------------------
 # -----------------------------
 # Safe correlation heatmap function
@@ -1334,7 +1462,7 @@ if df is not None and st.session_state.output:
     }
     try:
         collection.insert_one(output_doc)
-        st.success("✅ Analysis saved to MongoDB Atlas!")
+        #st.success("✅ Analysis saved to MongoDB Atlas!")
     except Exception as e:
         st.error(f"Failed to save to MongoDB: {e}")
         os.makedirs("outputs", exist_ok=True)
@@ -1378,7 +1506,7 @@ if df is not None and st.session_state.output:
         except Exception as e:
             st.warning(f"PDF report generation failed: {e}")
 
-    st.success("✅ AI Analysis Complete! Files saved in outputs/")
+    #st.success("✅ AI Analysis Complete! Files saved in outputs/")
 
     # ----------------------------
     # Display Outputs
