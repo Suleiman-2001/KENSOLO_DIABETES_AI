@@ -1008,20 +1008,41 @@ if numeric_cols:
         else:
             st.info("Need at least 2 numeric columns to create scatter plots.")
 
-    # ---------------------
-    # Tab 3: Other Charts Example
-    # ---------------------
+# ---------------------
+# Tab 3: Other Charts Example
+# ---------------------
+
+if numeric_cols:
+
     with tab3:
         st.write("### Line Chart Example")
+
         col = st.selectbox(
             "Select Column",
             numeric_cols,
             key=f"line_col_tab3_{'_'.join(numeric_cols)}"
         )
-        fig_line = px.line(df, y=col, title=f"Line Chart of {col}")
+
+        # ✅ Prepare data safely
+        df_plot = df.copy()
+
+        if isinstance(df_plot.index, pd.MultiIndex):
+            df_plot = df_plot.reset_index()
+
+        # ✅ Safe X-axis selection
+        x_col = "Date" if "Date" in df_plot.columns else df_plot.columns[0]
+
+        # ✅ Plot
+        fig_line = px.line(
+            df_plot,
+            x=x_col,
+            y=col,
+            title=f"Line Chart of {col}"
+        )
+
         st.plotly_chart(
             fig_line,
-            use_container_width=True,
+            width='stretch',
             key=f"line_chart_tab3_{col}"
         )
 
