@@ -1,10 +1,6 @@
-from pymongo import MongoClient
+
 import seaborn as sns
 import plotly.express as px
-# Connect to your Atlas cluster
-client = MongoClient("mongodb+srv://KENSOLOAI:Jecintamugure123@cluster0.lkkaqnv.mongodb.net/?appName=Cluster0")
-db = client["kensolo_ai"]  # Database name
-collection = db["analysis"]  # Collection name
 
 import sys, os
 sys.path.append(os.path.abspath(os.getcwd()))
@@ -838,8 +834,16 @@ if df is not None:
 
     # show P&L dashboard
     display_pl_dashboard(df)
+# Create optimized dataset for analysis
+# ----------------------------
+if df is None or df.empty:
+    st.error("❌ No dataset loaded. Please upload a valid file first.")
+    st.stop()
 
-
+df_analysis = df.sample(
+    n=50000 if len(df) > 50000 else len(df),
+    random_state=42
+)
 # -----------------------------
 # 3️⃣ Feature Engineering & Dynamic Dashboard (Fully Dynamic)
 # -----------------------------
@@ -946,13 +950,29 @@ else:
 # Safe correlation heatmap function
 # -----------------------------
 def safe_corr_heatmap(df, numeric_cols):
-    if numeric_cols:  # check if there are numeric columns
-        fig, ax = plt.subplots(figsize=(10, 6))
-        sns.heatmap(df[numeric_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
-        st.pyplot(fig)
-    else:
-        st.info("No numeric columns found for correlation heatmap.")
+    if numeric_cols and len(numeric_cols) > 1:
 
+        # 👉 STEP 1: sample data for speed (IMPORTANT)
+        df_sample = df[numeric_cols].sample(
+            n=min(5000, len(df)),
+            random_state=42
+        )
+
+        # 👉 STEP 2: limit columns (VERY IMPORTANT for 200 cols)
+        limited_cols = numeric_cols[:20]
+
+        corr = df_sample[limited_cols].corr()
+
+        # 👉 STEP 3: make figure lighter
+        fig, ax = plt.subplots(figsize=(8, 5))
+
+        # ❌ remove annot=True (this causes lag)
+        sns.heatmap(corr, cmap="coolwarm", ax=ax)
+
+        st.pyplot(fig)
+
+    else:
+        st.info("Not enough numeric columns for correlation heatmap.")
 # -----------------------------
 # Check if dataframe is loaded
 # -----------------------------
@@ -1471,22 +1491,6 @@ if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
         import json
         import os
         import pandas as pd
-        # Save outputs to MongoDB
-if df is not None and st.session_state.output:
-    output_doc = {
-        "dataset_name": uploaded_file.name if uploaded_file else "pasted_data",
-        "timestamp": pd.Timestamp.now().isoformat(),
-        "industry": industry_value,
-        "predictions": st.session_state.output.get("predictions"),
-        "recommendations": st.session_state.output.get("recommendations"),
-        "adaptive_insights": st.session_state.output.get("adaptive_insights")
-    }
-    try:
-        collection.insert_one(output_doc)
-        #st.success("✅ Analysis saved to MongoDB Atlas!")
-    except Exception as e:
-        st.error(f"Failed to save to MongoDB: {e}")
-        os.makedirs("outputs", exist_ok=True)
 
         output = st.session_state.output
 

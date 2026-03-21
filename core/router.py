@@ -166,7 +166,22 @@ def route_to_engines(df, column_types, autofix=True, industry=None, query=None):
         except Exception as e:
             print(f"⚠️ Autofix failed: {e}")
             working_df = df
+# =========================================================
+    # 2.1️⃣ FORCE CLEAN DATA FOR ML (PREVENT NaN ERRORS)
+    # =========================================================
+    try:
+        num_cols = working_df.select_dtypes(include=["number"]).columns
+        working_df[num_cols] = working_df[num_cols].fillna(
+            working_df[num_cols].mean()
+        )
 
+        cat_cols = working_df.select_dtypes(include=["object"]).columns
+        working_df[cat_cols] = working_df[cat_cols].fillna("Unknown")
+
+        print("✅ Missing values handled globally (ML-safe)")
+
+    except Exception as e:
+        print(f"⚠️ Global NaN handling failed: {e}")   
     # Recompute column types after coercion/autofix so downstream engines get correct hints
     column_types = {}
     for col in working_df.columns:
@@ -213,7 +228,7 @@ def route_to_engines(df, column_types, autofix=True, industry=None, query=None):
     if use_chunking:
         print(f"⚡ Large dataset detected, processing in {len(chunks)} chunks...")
 
-        with ProcessPoolExecutor(max_workers=MAX_PROCESSES) as executor:
+        with ThreadPoolExecutor(max_workers=MAX_PROCESSES) as executor:
             futures = []
 
             for chunk in chunks:
