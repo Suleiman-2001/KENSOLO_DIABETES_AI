@@ -4,7 +4,8 @@ import plotly.express as px
 
 import sys, os
 sys.path.append(os.path.abspath(os.getcwd()))
-
+import os
+os.makedirs("outputs", exist_ok=True)
 import streamlit as st
 # ----------------------------
 # SAFE DEFAULTS (to avoid NameError)
