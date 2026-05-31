@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+
+  <!-- Home page -->
+  <url>
+    <loc>https://suleiman-2001.github.io/KENSOLO-AI/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+
+  <!-- About / Project Overview -->
+  <url>
+    <loc>https://suleiman-2001.github.io/KENSOLO-AI/about.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Diabetes AI Demo -->
+  <url>
+    <loc>https://suleiman-2001.github.io/KENSOLO-AI/demo.html</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.95</priority>
+  </url>
+
+  <!-- Analytics Dashboard -->
+  <url>
+    <loc>https://suleiman-2001.github.io/KENSOLO-AI/dashboard.html</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <!-- Clinical Decision Engine -->
+  <url>
+    <loc>https://suleiman-2001.github.io/KENSOLO-AI/clinical.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+  </url>
+
+  <!-- Documentation -->
+  <url>
+    <loc>https://suleiman-2001.github.io/KENSOLO-AI/docs.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Risk / Impact Engine -->
+  <url>
+    <loc>https://suleiman-2001.github.io/KENSOLO-AI/risk.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.75</priority>
+  </url>
+
+</urlset>
