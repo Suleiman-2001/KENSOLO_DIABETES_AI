@@ -1,173 +1,141 @@
 # engines/talk_to_data.py
+
 import pandas as pd
 import numpy as np
 import re
 
-def find_column_from_query(df, query):
-    """
-    Attempt to detect column names mentioned in the query.
-    """
-    query_lower = query.lower()
+
+# ----------------------------
+# COLUMN MATCHING (IMPROVED)
+# ----------------------------
+def find_column(df, query):
+    query = query.lower()
+
+    # exact match
     for col in df.columns:
-        if col.lower() in query_lower:
+        if col.lower() == query:
             return col
+
+    # partial match
+    for col in df.columns:
+        clean_col = col.lower().replace("_", "").replace(" ", "")
+        clean_query = query.replace(" ", "")
+        if clean_col in clean_query or clean_query in clean_col:
+            return col
+
     return None
 
+
+# ----------------------------
+# MAIN ENGINE
+# ----------------------------
 def talk_to_data_ai(df: pd.DataFrame, query: str, output: dict = None):
-    """
-    Advanced Talk-to-Your-Data AI
-    Natural-language friendly and business-aware.
-    output: Optional dict from AI analysis containing predictions.
-    """
-    query_lower = query.lower()
 
-    # -----------------------------
-    # ACCURACY / METRICS
-    # -----------------------------
-    if ("accuracy" in query_lower or "metric" in query_lower) and output:
-        predictions = output.get("predictions", {})
-        if not predictions:
-            return "⚠️ No predictions available to calculate accuracy or metrics."
+    q = query.lower().strip()
 
-        accuracy_results = {}
-        for target, info in predictions.items():
-            # Expecting 'actual' and 'predicted' in info
-            actuals = info.get("actual")
-            preds = info.get("predicted")
-            if actuals and preds and len(actuals) == len(preds):
-                correct = sum([1 if a == p else 0 for a, p in zip(actuals, preds)])
-                accuracy = correct / len(actuals)
-                accuracy_results[target] = round(accuracy, 4)
-            else:
-                accuracy_results[target] = "Not available"
+    # ----------------------------
+    # BASIC STRUCTURE
+    # ----------------------------
+    if any(x in q for x in ["rows", "row count"]):
+        return {
+            "type": "info",
+            "result": {
+                "rows": int(df.shape[0]),
+                "columns": int(df.shape[1])
+            }
+        }
 
-        return f"✅ Accuracy / Metrics Results:\n{accuracy_results}"
+    if "columns" in q:
+        return {
+            "type": "info",
+            "result": list(df.columns)
+        }
 
-    # -----------------------------
-    # BASIC DATASET INFO
-    # -----------------------------
-    if "how many rows" in query_lower or "row count" in query_lower:
-        return f"Dataset contains {df.shape[0]} rows and {df.shape[1]} columns."
+    if "summary" in q or "describe" in q:
+        return {
+            "type": "analysis",
+            "result": df.describe(include="all").to_dict()
+        }
 
-    if "columns" in query_lower:
-        return list(df.columns)
+    if "head" in q:
+        return {
+            "type": "preview",
+            "result": df.head(5).to_dict()
+        }
 
-    if "summary" in query_lower or "describe" in query_lower:
-        return df.describe(include='all').to_dict()
+    # ----------------------------
+    # DATA QUALITY
+    # ----------------------------
+    if "quality" in q or "good" in q:
+        missing = df.isnull().mean().mean()
+        duplicates = df.duplicated().sum()
+        constant = len([c for c in df.columns if df[c].nunique() <= 1])
 
-    if "head" in query_lower:
-        return df.head(5).to_dict()
+        return {
+            "type": "quality",
+            "result": {
+                "missing_rate": round(float(missing), 4),
+                "duplicates": int(duplicates),
+                "constant_columns": int(constant)
+            }
+        }
 
-    # -----------------------------
-    # DATA QUALITY CHECK
-    # -----------------------------
-    if "good" in query_lower or "quality" in query_lower:
-        total_missing = df.isnull().sum().sum()
-        constant_cols = [c for c in df.columns if df[c].nunique() <= 1]
-        duplicate_rows = df.duplicated().sum()
+    # ----------------------------
+    # MISSING VALUES
+    # ----------------------------
+    if "missing" in q or "null" in q:
+        missing = df.isnull().sum()
+        missing = missing[missing > 0]
 
-        issues = []
-        if total_missing > 0:
-            issues.append(f"{total_missing} missing values")
-        if constant_cols:
-            issues.append(f"constant columns: {constant_cols}")
-        if duplicate_rows > 0:
-            issues.append(f"{duplicate_rows} duplicate rows")
+        return {
+            "type": "missing",
+            "result": missing.to_dict() if not missing.empty else "No missing values"
+        }
 
-        if not issues:
-            return "✅ Dataset looks clean and well-structured."
-        else:
-            return f"⚠️ Dataset issues detected: {', '.join(issues)}"
-
-    # -----------------------------
-    # MISSING VALUES ANALYSIS
-    # -----------------------------
-    if "missing" in query_lower or "null" in query_lower:
-        missing_counts = df.isnull().sum().sort_values(ascending=False)
-        missing_cols = missing_counts[missing_counts > 0]
-        if missing_cols.empty:
-            return "✅ No missing values detected in any column."
-        else:
-            return missing_cols.to_dict()
-
-    # -----------------------------
-    # CONSTANT COLUMNS
-    # -----------------------------
-    if "constant" in query_lower:
-        constant_cols = [c for c in df.columns if df[c].nunique() <= 1]
-        if constant_cols:
-            return {"constant_columns": constant_cols}
-        else:
-            return "✅ No constant columns detected."
-
-    # -----------------------------
-    # OUTLIERS / EXTREME VALUES
-    # -----------------------------
-    if "outlier" in query_lower or "extreme" in query_lower:
-        col = find_column_from_query(df, query)
-        numeric_cols = df.select_dtypes(include=np.number).columns
-
-        if col and col in numeric_cols:
-            top_n = 5
-            match = re.search(r'\d+', query)
-            if match:
-                top_n = int(match.group())
-            values = df[col].sort_values(
-                key=lambda x: abs(x - x.mean()), ascending=False
-            ).head(top_n)
-            return {col: values.tolist()}
-
-        outliers = {}
-        for col in numeric_cols:
-            values = df[col].sort_values(
-                key=lambda x: abs(x - x.mean()), ascending=False
-            ).head(5)
-            outliers[col] = values.tolist()
-        return outliers
-
-    # -----------------------------
-    # MEAN / AVERAGE / SUM
-    # -----------------------------
-    if "average" in query_lower or "mean" in query_lower:
-        col = find_column_from_query(df, query)
-        if col and np.issubdtype(df[col].dtype, np.number):
-            return f"Average of {col} is {df[col].mean():,.2f}"
-        return df.select_dtypes(include=np.number).mean().to_dict()
-
-    if "sum" in query_lower or "total" in query_lower:
-        col = find_column_from_query(df, query)
-        if col and np.issubdtype(df[col].dtype, np.number):
-            return f"Total of {col} is {df[col].sum():,.2f}"
-        return df.select_dtypes(include=np.number).sum().to_dict()
-
-    # -----------------------------
-    # UNIQUE VALUES
-    # -----------------------------
-    if "unique" in query_lower:
-        col = find_column_from_query(df, query)
-        if col:
-            return df[col].unique().tolist()
-        return {c: df[c].nunique() for c in df.columns}
-
-    # -----------------------------
+    # ----------------------------
     # CORRELATION
-    # -----------------------------
-    if "correlation" in query_lower:
-        numeric_df = df.select_dtypes(include=np.number)
-        if numeric_df.shape[1] < 2:
-            return "Not enough numeric columns to calculate correlation."
-        return numeric_df.corr().to_dict()
+    # ----------------------------
+    if "correlation" in q:
+        num = df.select_dtypes(include=np.number)
+        if num.shape[1] < 2:
+            return {"type": "error", "result": "Not enough numeric columns"}
+        return {
+            "type": "correlation",
+            "result": num.corr().to_dict()
+        }
 
-    # -----------------------------
-    # COLUMN-SPECIFIC INSIGHTS
-    # -----------------------------
-    col = find_column_from_query(df, query)
+    # ----------------------------
+    # OUTLIERS (IQR METHOD - FIXED)
+    # ----------------------------
+    if "outlier" in q:
+        numeric = df.select_dtypes(include=np.number)
+        outliers = {}
+
+        for col in numeric.columns:
+            q1 = df[col].quantile(0.25)
+            q3 = df[col].quantile(0.75)
+            iqr = q3 - q1
+
+            mask = (df[col] < q1 - 1.5 * iqr) | (df[col] > q3 + 1.5 * iqr)
+            if mask.sum() > 0:
+                outliers[col] = int(mask.sum())
+
+        return {
+            "type": "outliers",
+            "result": outliers if outliers else "No outliers detected"
+        }
+
+    # ----------------------------
+    # COLUMN INTELLIGENCE
+    # ----------------------------
+    col = find_column(df, q)
     if col:
         info = {
             "dtype": str(df[col].dtype),
-            "missing_values": int(df[col].isnull().sum()),
-            "unique_values": df[col].nunique()
+            "missing": int(df[col].isnull().sum()),
+            "unique": int(df[col].nunique())
         }
+
         if np.issubdtype(df[col].dtype, np.number):
             info.update({
                 "mean": float(df[col].mean()),
@@ -175,13 +143,17 @@ def talk_to_data_ai(df: pd.DataFrame, query: str, output: dict = None):
                 "min": float(df[col].min()),
                 "max": float(df[col].max())
             })
-        return {col: info}
 
-    # -----------------------------
+        return {
+            "type": "column_insight",
+            "column": col,
+            "result": info
+        }
+
+    # ----------------------------
     # FALLBACK
-    # -----------------------------
-    return (
-        "🤖 I understood your query but could not match a specific rule. "
-        "Try asking about: rows, columns, summary, quality, missing values, "
-        "constant columns, outliers, average, total, unique values, correlation, metrics, or any specific column."
-    )
+    # ----------------------------
+    return {
+        "type": "fallback",
+        "result": "Query not understood. Try: rows, columns, missing, summary, correlation, outliers, or column name"
+    }

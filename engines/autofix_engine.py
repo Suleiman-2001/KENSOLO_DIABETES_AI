@@ -1,113 +1,122 @@
 # engines/autofix_engine.py
 import pandas as pd
+import numpy as np
 
-def autofix_missing(df, null_threshold=0.20):
+def autofix_missing(df, null_threshold=0.2):
     """
-    Intelligently fill or filter missing values based on percentage threshold.
-    
+    Intelligent missing value handler.
+
     Strategy:
-    - If null% <= threshold (default 20%): Fill with mean (numeric) or "N/A" (text)
-    - If null% > threshold: Drop rows with nulls in that column
-    
-    Args:
-        df: DataFrame to process
-        null_threshold: Decimal threshold (0.20 = 20%)
+    - <= threshold → impute
+    - > threshold → drop column (NOT rows, safer for ML stability)
     """
+
+    df = df.copy()
+
     filled_cols = []
     dropped_cols = []
-    
+
     for col in df.columns:
         null_count = df[col].isnull().sum()
-        if null_count > 0:
-            null_pct = null_count / len(df)
-            
-            if null_pct <= null_threshold:
-                # Fill with mean (numeric) or "N/A" (text)
-                if df[col].dtype != "object":
-                    mean_val = df[col].mean()
-                    df[col].fillna(mean_val, inplace=True)
-                    filled_cols.append({
-                        "column": col,
-                        "nulls": null_count,
-                        "null_pct": f"{null_pct*100:.1f}%",
-                        "action": f"Filled with mean ({mean_val:.2f})" if isinstance(mean_val, float) else f"Filled with mean"
-                    })
-                else:
-                    df[col].fillna("N/A", inplace=True)
-                    filled_cols.append({
-                        "column": col,
-                        "nulls": null_count,
-                        "null_pct": f"{null_pct*100:.1f}%",
-                        "action": "Filled with 'N/A'"
-                    })
-            else:
-                # Drop rows where this column is null (nulls > threshold)
-                rows_before = len(df)
-                df = df.dropna(subset=[col])
-                rows_after = len(df)
-                rows_dropped = rows_before - rows_after
-                
-                dropped_cols.append({
+
+        if null_count == 0:
+            continue
+
+        null_pct = null_count / len(df)
+
+        # ----------------------------
+        # IMPUTATION STRATEGY
+        # ----------------------------
+        if null_pct <= null_threshold:
+
+            if pd.api.types.is_numeric_dtype(df[col]):
+                fill_value = df[col].mean()
+                df[col] = df[col].fillna(fill_value)
+
+                filled_cols.append({
                     "column": col,
-                    "nulls": null_count,
-                    "null_pct": f"{null_pct*100:.1f}%",
-                    "action": f"Dropped {rows_dropped} rows",
-                    "rows_before": rows_before,
-                    "rows_after": rows_after
+                    "nulls": int(null_count),
+                    "action": f"filled_with_mean ({fill_value:.4f})"
                 })
-    
-    # Print summary
-    if filled_cols:
-        print(f"\nFilled missing values (threshold <= 20%):")
-        for item in filled_cols:
-            print(f"  • {item['column']}: {item['nulls']} nulls ({item['null_pct']}) -> {item['action']}")
-    
-    if dropped_cols:
-        print(f"\nFiltered out rows with high nulls (threshold > 20%):")
-        for item in dropped_cols:
-            print(f"  • {item['column']}: {item['nulls']} nulls ({item['null_pct']}) -> {item['action']}")
-    
-    if not filled_cols and not dropped_cols:
-        print("Data is clean - no missing values detected")
-    
+
+            else:
+                df[col] = df[col].fillna("N/A")
+
+                filled_cols.append({
+                    "column": col,
+                    "nulls": int(null_count),
+                    "action": "filled_with_NA"
+                })
+
+        # ----------------------------
+        # DROP COLUMN (safer than row drop)
+        # ----------------------------
+        else:
+            df = df.drop(columns=[col])
+            dropped_cols.append({
+                "column": col,
+                "nulls": int(null_count),
+                "action": "dropped_column_due_to_high_missing"
+            })
+
     return df, {
         "filled": filled_cols,
-        "dropped": dropped_cols,
-        "rows_removed": sum(item.get("rows_before", 0) - item.get("rows_after", 0) for item in dropped_cols)
+        "dropped": dropped_cols
     }
 
+
+# ----------------------------
+# DUPLICATES FIX
+# ----------------------------
 def autofix_duplicates(df):
-    """Remove duplicate rows"""
-    before = df.shape[0]
+    before = len(df)
     df = df.drop_duplicates()
-    after = df.shape[0]
-    if before - after > 0:
-        print(f"Removed {before - after} duplicate rows")
-    return df
+    removed = before - len(df)
 
+    return df, {
+        "duplicates_removed": int(removed)
+    }
+
+
+# ----------------------------
+# CONSTANT COLUMN FIX
+# ----------------------------
 def autofix_constant(df):
-    """Remove constant columns"""
     const_cols = [c for c in df.columns if df[c].nunique() <= 1]
-    df = df.drop(columns=const_cols)
-    if const_cols:
-        print(f"Dropped constant columns: {const_cols}")
-    return df
 
+    df = df.drop(columns=const_cols)
+
+    return df, {
+        "constant_columns_removed": const_cols
+    }
+
+
+# ----------------------------
+# MASTER PIPELINE
+# ----------------------------
 def apply_autofix(df):
-    """Apply all autofix steps and return summary"""
+    """
+    Full automated data cleaning pipeline
+    """
+
+    df = df.copy()
     summary = {}
-    
-    # Missing values handling
-    df, missing_summary = autofix_missing(df)
-    summary["missing"] = missing_summary
-    
-    # Duplicates handling
-    df = autofix_duplicates(df)
-    
-    # Constant columns handling
-    df = autofix_constant(df)
-    
-    print("\nAutofix applied to dataset")
-    print(f"Final dataset: {df.shape[0]} rows x {df.shape[1]} columns")
-    
+
+    # 1. Missing values
+    df, miss = autofix_missing(df)
+    summary["missing"] = miss
+
+    # 2. Duplicates
+    df, dup = autofix_duplicates(df)
+    summary["duplicates"] = dup
+
+    # 3. Constant columns
+    df, const = autofix_constant(df)
+    summary["constant_columns"] = const
+
+    summary["final_shape"] = {
+        "rows": df.shape[0],
+        "columns": df.shape[1]
+    }
+
     return df, summary

@@ -4,8 +4,9 @@ import plotly.express as px
 
 import sys, os
 sys.path.append(os.path.abspath(os.getcwd()))
-import os
 os.makedirs("outputs", exist_ok=True)
+GRAPH_FOLDER = os.path.join("outputs", "graphs")
+os.makedirs(GRAPH_FOLDER, exist_ok=True)
 import streamlit as st
 # ----------------------------
 # SAFE DEFAULTS (to avoid NameError)
@@ -59,6 +60,93 @@ def save_outputs(output):
         pdf.output("outputs/report.pdf")
     except Exception as e:
         st.warning(f"PDF report generation failed: {e}")
+
+
+def display_issues(issues: dict):
+    """Render problem discovery issues in a human-friendly layout."""
+    if not issues:
+        st.info("No data quality or discovery issues detected.")
+        return
+
+    # Ensure consistent ordering
+    keys = list(issues.keys())
+    cols = st.columns(2)
+    i = 0
+    for k in keys:
+        v = issues.get(k) or {}
+        col = cols[i % len(cols)]
+        with col:
+            sev = (v.get("severity") or v.get("severity", "Medium")).lower()
+            color = "#F59E0B" if sev in ("medium",) else ("#DC2626" if sev in ("high",) else "#10B981")
+            st.markdown(f"<div style='border-radius:8px;padding:12px;border:1px solid #eee;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,0.03)'>\n<strong>{v.get('column','Unknown')}</strong><br/>\n<small>{v.get('issue_type','')}</small><br/>\n<p style='color:{color};font-weight:700;margin:6px 0'>{v.get('details','')}</p>\n<small>Severity: {v.get('severity','Medium')}</small>\n</div>", unsafe_allow_html=True)
+        i += 1
+
+
+def talk_to_data_fallback(df, query: str):
+    """A lightweight local fallback for 'Talk to Your Data' when the AI engine is unavailable.
+
+    Supports simple queries: 'top N outliers', 'describe <col>', 'top values <col>', 'summary'.
+    """
+    q = (query or "").strip().lower()
+    result = {"answer": "", "details": {}}
+
+    try:
+        if "outlier" in q:
+            # compute IQR-based outliers per numeric column
+            numeric = df.select_dtypes(include=[np.number])
+            outlier_summary = {}
+            for c in numeric.columns:
+                s = numeric[c].dropna()
+                if s.empty:
+                    continue
+                q1 = s.quantile(0.25)
+                q3 = s.quantile(0.75)
+                iqr = q3 - q1
+                lower = q1 - 1.5 * iqr
+                upper = q3 + 1.5 * iqr
+                outliers = s[(s < lower) | (s > upper)]
+                pct = 100 * len(outliers) / max(1, len(s))
+                outlier_summary[c] = {"count": int(len(outliers)), "pct": f"{pct:.2f}%"}
+
+            # sort by count desc
+            sorted_out = sorted(outlier_summary.items(), key=lambda x: x[1]["count"], reverse=True)
+            result["answer"] = "Outlier summary computed for numeric columns."
+            result["details"] = sorted_out
+            return result
+
+        if q.startswith("describe") or q.startswith("summary"):
+            # return pandas describe
+            cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            if cols:
+                d = df[cols].describe().to_dict()
+                result["answer"] = "Summary statistics for numeric columns"
+                result["details"] = d
+                return result
+
+        # top values
+        if q.startswith("top") and "values" in q:
+            # try to parse column
+            parts = q.split()
+            col = None
+            for p in parts:
+                if p in df.columns.str.lower().tolist():
+                    # find actual column name
+                    col = [c for c in df.columns if c.lower() == p][0]
+                    break
+            if col is None and len(df.columns) > 0:
+                col = df.columns[0]
+            top = df[col].value_counts().head(10).to_dict()
+            result["answer"] = f"Top values for {col}"
+            result["details"] = top
+            return result
+
+        # fallback: return simple dataset info
+        result["answer"] = f"Dataset has {len(df)} rows and {df.shape[1]} columns. Use queries like 'top N outliers' or 'describe <col>'."
+        return result
+
+    except Exception as e:
+        return {"answer": f"Fallback query failed: {e}", "details": {}}
+
 # ----------------------------
 # Display & Download Generated Files
 # ----------------------------
@@ -81,15 +169,18 @@ def display_generated_files():
                 st.dataframe(df_file.head(), use_container_width=True)
             elif path.endswith(".json"):
                 with open(path) as f:
-                    st.json(json.load(f))
+                    try:
+                        pretty_display(json.load(f))
+                    except Exception:
+                        st.write(f.read())
             st.download_button(f"Download {name}", open(path, "rb"), file_name=os.path.basename(path))
         else:
             st.warning(f"{name} not generated yet. Run analysis to create it.")
 # ----------------------------
 # MUST BE FIRST STREAMLIT COMMAND
 # ----------------------------
-st.set_page_config(page_title="KENSOLO AI", layout="wide")
-st.title("🤖 KENSOLO — AI Analytics Dashboard")
+st.set_page_config(page_title="IntelliHealth Diabetics Analytics Platform", layout="wide")
+st.title("🩺 IntelliHealth — Diabetics Analytics Platform")
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -232,6 +323,60 @@ def display_ai_answer(answer):
         unsafe_allow_html=True
     )
 
+
+def pretty_display(data, max_rows=10):
+    """Display dicts/lists as readable tables or lists instead of raw JSON."""
+    if data is None:
+        st.info("No data to display.")
+        return
+
+    # Self-critic special formatting
+    if isinstance(data, dict) and data.get("risk_flags") is not None:
+        # show top-level metrics and list risk flags
+        metrics = {k: v for k, v in data.items() if k != "risk_flags"}
+        if metrics:
+            try:
+                st.dataframe(pd.DataFrame([metrics]).T.rename(columns={0: 'value'}), use_container_width=True)
+            except Exception:
+                st.write(metrics)
+        st.markdown("**Risk Flags**")
+        for rf in data.get("risk_flags", []):
+            st.write(f"- {rf}")
+        return
+
+    # Numeric-summary like structures (each value is a dict of stats)
+    if isinstance(data, dict):
+        first_val = next(iter(data.values())) if data else None
+        if isinstance(first_val, dict) and set(first_val.keys()) & {"mean", "std", "min", "max", "25%", "50%", "75%", "count"}:
+            try:
+                df_stats = pd.DataFrame.from_dict(data, orient="index")
+                st.dataframe(df_stats, use_container_width=True)
+                return
+            except Exception:
+                pass
+
+        # generic dict -> table of key/value
+        try:
+            df = pd.DataFrame([{"key": k, "value": (v if not isinstance(v, (dict, list)) else str(v))} for k, v in data.items()])
+            st.dataframe(df.head(max_rows), use_container_width=True)
+            return
+        except Exception:
+            st.write(data)
+            return
+
+    if isinstance(data, list):
+        try:
+            df = pd.DataFrame(data)
+            st.dataframe(df.head(max_rows), use_container_width=True)
+            return
+        except Exception:
+            for item in data[:max_rows]:
+                st.write(item)
+            return
+
+    # fallback
+    st.write(data)
+
 # ----------------------------
 # KPI Cards Dashboard
 # ----------------------------
@@ -343,7 +488,24 @@ def display_kpi_cards(df, output):
                 help="Number of completely duplicate records"
             )
         
-        # Show missing values per column
+        missing_total = int(df.isnull().sum().sum())
+        missing_pct = (missing_total / max(1, df.size)) * 100
+        missing_col_count = int((df.isnull().sum() > 0).sum())
+
+        st.divider()
+        st.write("### Missing Value Summary")
+        missing_summary = pd.DataFrame([
+            {"Metric": "Total missing cells", "Value": missing_total},
+            {"Metric": "Columns with missing values", "Value": missing_col_count},
+            {"Metric": "Overall missing rate", "Value": f"{missing_pct:.2f}%"}
+        ])
+        st.dataframe(missing_summary, use_container_width=True)
+
+        handling_explanation = "Missing values are excluded from numeric summary calculations by default (dropna behavior)."
+        if st.session_state.get("autofix_summary"):
+            handling_explanation = "Autofix mode is enabled; missing values may have been imputed or rows dropped based on null thresholds."
+        st.info(handling_explanation)
+
         st.divider()
         st.write("### Missing Values by Column")
         missing_data = df.isnull().sum().sort_values(ascending=False)
@@ -449,77 +611,93 @@ def display_kpi_cards(df, output):
 # P&L Dashboard
 # ----------------------------
 def display_pl_dashboard(df):
-    st.subheader("💰 Profit & Loss Dashboard")
+    """Diabetes Overview Dashboard (replaces Profit & Loss view).
 
-    # Try detecting financial columns automatically
-    revenue_cols = [c for c in df.columns if "revenue" in c.lower() or "sales" in c.lower()]
-    cost_cols = [c for c in df.columns if "cost" in c.lower() or "expense" in c.lower()]
-    profit_cols = [c for c in df.columns if "profit" in c.lower()]
+    Detects common diabetes-related columns and shows simple clinical KPIs.
+    """
+    st.subheader("🩺 Diabetes Overview Dashboard")
 
-    if not revenue_cols or not cost_cols:
-        st.info("Dataset does not appear to contain financial columns (revenue/cost).")
+    # Common diabetes clinical columns to look for
+    diabetes_cols = {
+        "glucose": [c for c in df.columns if "glucose" in c.lower() or "gluc" in c.lower()],
+        "bmi": [c for c in df.columns if "bmi" in c.lower() or "body mass" in c.lower()],
+        "age": [c for c in df.columns if c.lower() == "age" or "age" in c.lower()],
+        "insulin": [c for c in df.columns if "insulin" in c.lower()],
+        "pregnancies": [c for c in df.columns if "preg" in c.lower() or "pregnancies" in c.lower()],
+        "outcome": [c for c in df.columns if c.lower() in ("outcome", "diabetes", "diabetes_outcome", "target")]
+    }
+
+    found = {k: v for k, v in diabetes_cols.items() if v}
+
+    if not found:
+        st.info("Dataset does not appear to contain diabetes-relevant clinical columns (e.g. glucose, BMI, age, insulin). Upload a diabetes clinical dataset or continue with general analysis.")
         return
 
-    revenue_col = revenue_cols[0]
-    cost_col = cost_cols[0]
-
-    if profit_cols:
-        profit_col = profit_cols[0]
-    else:
-        df["Profit"] = df[revenue_col] - df[cost_col]
-        profit_col = "Profit"
-
-    # ----------------------------
-    # KPI Metrics
-    # ----------------------------
-    total_revenue = df[revenue_col].sum()
-    total_cost = df[cost_col].sum()
-    total_profit = df[profit_col].sum()
-    margin = (total_profit / total_revenue) * 100 if total_revenue != 0 else 0
-
+    # Build simple KPIs
+    st.divider()
     col1, col2, col3, col4 = st.columns(4)
 
-    col1.metric("Total Revenue", f"${total_revenue:,.2f}")
-    col2.metric("Total Cost", f"${total_cost:,.2f}")
-    col3.metric("Total Profit", f"${total_profit:,.2f}")
-    col4.metric("Profit Margin", f"{margin:.2f}%")
+    # Prevalence if an outcome/target exists
+    outcome_col = diabetes_cols.get("outcome", [None])[0]
+    if outcome_col and outcome_col in df.columns:
+        prevalence = 100 * df[outcome_col].dropna().astype(float).mean()
+        col1.metric("Diabetes Prevalence", f"{prevalence:.1f}%")
+    else:
+        col1.metric("Diabetes Prevalence", "N/A")
+
+    # Average glucose
+    glucose_col = diabetes_cols.get("glucose", [None])[0]
+    if glucose_col and glucose_col in df.columns:
+        col2.metric("Avg Glucose", f"{df[glucose_col].dropna().mean():.1f}")
+    else:
+        col2.metric("Avg Glucose", "N/A")
+
+    # Average BMI
+    bmi_col = diabetes_cols.get("bmi", [None])[0]
+    if bmi_col and bmi_col in df.columns:
+        col3.metric("Avg BMI", f"{df[bmi_col].dropna().mean():.1f}")
+    else:
+        col3.metric("Avg BMI", "N/A")
+
+    # Median age
+    age_col = diabetes_cols.get("age", [None])[0]
+    if age_col and age_col in df.columns:
+        col4.metric("Median Age", f"{df[age_col].dropna().median():.0f}")
+    else:
+        col4.metric("Median Age", "N/A")
 
     st.divider()
 
-    # ----------------------------
-    # Revenue vs Cost Chart
-    # ----------------------------
-    st.write("### Revenue vs Cost")
+    # Distribution charts for found columns
+    st.write("### Clinical Distributions")
+    for key in ("glucose", "bmi", "age", "insulin"):
+        cols = diabetes_cols.get(key, [])
+        if cols:
+            c = cols[0]
+            fig, ax = plt.subplots(figsize=(8, 3))
+            try:
+                df[c].dropna().hist(bins=30, ax=ax, color='skyblue', edgecolor='black')
+                ax.set_title(f"Distribution of {c}")
+                st.pyplot(fig)
+            except Exception:
+                continue
 
-    fig, ax = plt.subplots(figsize=(8,4))
-    ax.plot(df[revenue_col].values, label="Revenue")
-    ax.plot(df[cost_col].values, label="Cost")
-    ax.legend()
-    ax.set_title("Revenue vs Cost Trend")
-    st.pyplot(fig)
-
-    # ----------------------------
-    # Profit Distribution
-    # ----------------------------
-    st.write("### Profit Distribution")
-
-    fig2, ax2 = plt.subplots(figsize=(8,4))
-    df[profit_col].hist(bins=30, ax=ax2)
-    ax2.set_title("Profit Distribution")
-    st.pyplot(fig2)
-
-    # ----------------------------
-    # Top Profit Records
-    # ----------------------------
-    st.write("### Top Profit Records")
-    top_profit = df.sort_values(profit_col, ascending=False).head(10)
-    st.dataframe(top_profit)
+    # Show sample high-risk records if outcome exists
+    if outcome_col and outcome_col in df.columns:
+        st.write("### High-risk Sample Records")
+        # assume higher value==positive class (1)
+        try:
+            high_risk = df[df[outcome_col].astype(float) == 1].head(10)
+            if not high_risk.empty:
+                st.dataframe(high_risk)
+        except Exception:
+            pass
 # ----------------------------
 # Industry Selection
 # ----------------------------
-industry_options = ["None", "Finance", "Healthcare", "Retail", "Manufacturing"]
+industry_options = ["Healthcare"]
 selected_industry = st.selectbox("Select Industry for Smart Insights (Industry Mode)", industry_options)
-industry_value = None if selected_industry == "None" else selected_industry
+industry_value = selected_industry
 
 # ----------------------------
 # File Upload - Multi-Format Support
@@ -852,17 +1030,40 @@ if df is not None and not df.empty:
     df_filtered = df.copy()
 
     # -----------------------------
-    # Sidebar Filters (Dynamic for ALL Categorical Columns)
+    # Sidebar Filters (Dynamic for low-cardinality and categorical columns)
     # -----------------------------
     st.sidebar.title("Filter & Search")
-    categorical_cols = df_filtered.select_dtypes(include=['object', 'category']).columns.tolist()
 
-    for col in categorical_cols:
+    # Choose filterable columns: categorical OR low-cardinality numeric
+    filterable_cols = []
+    for c in df_filtered.columns:
+        try:
+            nunique = int(df_filtered[c].nunique(dropna=True))
+        except Exception:
+            nunique = 0
+        if df_filtered[c].dtype.name in ("object", "category") or nunique <= 100:
+            filterable_cols.append(c)
+
+    # Build filters
+    for col in filterable_cols:
         unique_vals = df_filtered[col].dropna().unique().tolist()
-        if unique_vals:
-            # Use ALL unique values as default (truly dynamic)
-            selected = st.sidebar.multiselect(f"Filter {col}", options=unique_vals, default=unique_vals)
-            df_filtered = df_filtered[df_filtered[col].isin(selected)]
+        # If numeric but many unique values, provide range slider
+        if pd.api.types.is_numeric_dtype(df_filtered[col]) and len(unique_vals) > 10:
+            try:
+                lo = float(df_filtered[col].min())
+                hi = float(df_filtered[col].max())
+                rng = st.sidebar.slider(f"{col} range", min_value=lo, max_value=hi, value=(lo, hi))
+                df_filtered = df_filtered[(df_filtered[col] >= rng[0]) & (df_filtered[col] <= rng[1])]
+            except Exception:
+                continue
+        else:
+            # use sorted unique values and display as strings to avoid widget type issues
+            opts = sorted([str(x) for x in unique_vals])
+            default = opts[:] if opts else []
+            selected = st.sidebar.multiselect(f"Filter {col}", options=opts, default=default, key=f"filter_{col}")
+            if selected:
+                # compare as strings for safety
+                df_filtered = df_filtered[df_filtered[col].astype(str).isin(selected)]
 
     # -----------------------------
     # Feature Engineering (Optional)
@@ -1070,11 +1271,7 @@ if numeric_cols:
 else:
     st.warning("No numeric columns found in your dataset for visualization.")
 #----------------------------
-import plotly.express as px
-import seaborn as sns
-import matplotlib.pyplot as plt
 
-st.subheader("📊 Automatic Data Visualizations")
 
 # ----------------------------
 # AUTOMATIC DATA VISUALIZATIONS (WITH UNIQUE KEYS)
@@ -1173,170 +1370,6 @@ with tab4:
 # END OF AUTOMATIC VISUALIZATIONS
 # ----------------------------
 
-# Tabs for cleaner UI
-tab1, tab2, tab3, tab4 = st.tabs([
-    "Distributions",
-    "Relationships",
-    "Categories",
-    "Time Series"
-])
-
-# ----------------------------
-# NUMERIC DISTRIBUTIONS
-# ----------------------------
-with tab1:
-
-    if len(numeric_cols) > 0:
-
-        st.write("### Numeric Distributions")
-
-        for col in numeric_cols[:4]:
-
-            fig = px.histogram(
-                df,
-                x=col,
-                nbins=30,
-                title=f"Distribution of {col}"
-            )
-
-            st.plotly_chart(fig, use_container_width=True)
-
-        st.write("### Boxplots (Outlier Detection)")
-
-        col_choice = st.selectbox(
-            "Select numeric column",
-            numeric_cols,
-            key="boxplot_column"
-        )
-
-        fig = px.box(
-            df,
-            y=col_choice,
-            title=f"Outliers in {col_choice}"
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-
-    else:
-        st.info("No numeric columns available.")
-
-# ----------------------------
-# RELATIONSHIPS
-# ----------------------------
-with tab2:
-
-    if len(numeric_cols) >= 2:
-
-        st.write("### Scatter Plot Explorer")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            x_axis = st.selectbox(
-                "Select X-axis",
-                numeric_cols,
-                key="scatter_x"
-            )
-
-        with col2:
-            y_axis = st.selectbox(
-                "Select Y-axis",
-                numeric_cols,
-                key="scatter_y"
-            )
-
-        fig = px.scatter(
-            df,
-            x=x_axis,
-            y=y_axis,
-            title=f"{x_axis} vs {y_axis}"
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-
-        st.write("### Correlation Heatmap")
-
-        fig, ax = plt.subplots(figsize=(10,6))
-
-        sns.heatmap(
-            df[numeric_cols].corr(),
-            annot=True,
-            cmap="coolwarm",
-            ax=ax
-        )
-
-        st.pyplot(fig)
-
-    else:
-        st.info("Need at least two numeric columns for relationship analysis.")
-
-# ----------------------------
-# CATEGORICAL ANALYSIS
-# ----------------------------
-with tab3:
-
-    if len(cat_cols) > 0:
-
-        st.write("### Category Frequency")
-
-        cat_col = st.selectbox(
-            "Select category column",
-            cat_cols,
-            key="category_column"
-        )
-
-        counts = df[cat_col].value_counts().reset_index()
-
-        counts.columns = [cat_col, "count"]
-
-        fig = px.bar(
-            counts,
-            x=cat_col,
-            y="count",
-            title=f"{cat_col} Distribution"
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-
-    else:
-        st.info("No categorical columns detected.")
-
-# ----------------------------
-# TIME SERIES ANALYSIS
-# ----------------------------
-with tab4:
-
-    if len(date_cols) > 0 and len(numeric_cols) > 0:
-
-        st.write("### Time Series Trends")
-
-        date_col = st.selectbox(
-            "Select date column",
-            date_cols,
-            key="time_date"
-        )
-
-        value_col = st.selectbox(
-            "Select value column",
-            numeric_cols,
-            key="time_value"
-        )
-
-        df_sorted = df.sort_values(date_col)
-
-        fig = px.line(
-            df_sorted,
-            x=date_col,
-            y=value_col,
-            title=f"{value_col} over time"
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-
-    else:
-        st.info("Dataset does not contain datetime columns.")
-
-    # ----------------------------
 # Autofix + Column Types (Safe)
 # ----------------------------
 if df is not None and not df.empty:
@@ -1345,6 +1378,7 @@ if df is not None and not df.empty:
     if autofix:
         try:
             df, autofix_summary = apply_autofix(df)
+            st.session_state.autofix_summary = autofix_summary
             st.success("Autofix applied successfully!")
             
             # Display Autofix Summary
@@ -1360,6 +1394,8 @@ if df is not None and not df.empty:
                         st.write(f"  • {item['column']}: {item['null_pct']} nulls → Dropped {item['rows_before'] - item['rows_after']} rows")
         except Exception as e:
             st.error(f"Autofix failed: {e}")
+    else:
+        st.session_state.autofix_summary = None
 
     # Detect column types safely
     column_types = {}
@@ -1410,32 +1446,43 @@ else:
 
 
     # ----------------------------
-    # Talk-to-Your-Data AI
+    # Talk-to-Your-Data AI (use engine if available, otherwise use local fallback)
     # ----------------------------
     try:
-        from engines.talk_to_data import talk_to_data_ai
-        TALK_ENABLED = True
-    except ModuleNotFoundError:
-        TALK_ENABLED = False
+        from engines.talk_to_data import talk_to_data_ai  # optional advanced engine
+        use_talk_engine = True
+    except Exception:
+        talk_to_data_ai = None
+        use_talk_engine = False
 
-    if TALK_ENABLED:
-        st.subheader("💬 Talk to Your Data AI")
-    user_question = st.text_input("Ask a question about your data (e.g., 'Top 5 Amount outliers')")
+    st.subheader("💬 Talk to Your Data AI")
+    user_question = st.text_input("Ask a question about your data (e.g., 'Top 5 Amount outliers')", key="talk_input")
 
     if st.button("Ask AI", key="talk_to_data_btn") and user_question:
         with st.spinner("🤖 Generating answer..."):
-            output = talk_to_data_ai(df, query=user_question)
-            st.session_state.output = output  # save to session
+            if use_talk_engine and talk_to_data_ai:
+                try:
+                    output = talk_to_data_ai(df, query=user_question)
+                except Exception as e:
+                    output = {"answer": f"Engine failed: {e}", "details": {}}
+            else:
+                output = talk_to_data_fallback(df, user_question)
 
-            # Safely display answer
-            answer_text = output.get("answer", "No answer returned") if output else "No output generated"
+            st.session_state.output = st.session_state.output or {}
+            # Attach the talk result into session output for traceability
+            st.session_state.output["talk_to_data"] = output
+
+            # Present answer
+            answer_text = output.get("answer", "No answer returned") if isinstance(output, dict) else str(output)
             display_ai_answer(answer_text)
 
-            # Save outputs
-            save_outputs(st.session_state.output)
-            st.success("✅ Predictions and recommendations saved to 'outputs/' folder!")
-    else:
-        display_ai_answer("Talk-to-Your-Data AI module not installed. Skipping.") # ----------------------------
+            # If there are details, show them below
+            details = output.get("details") if isinstance(output, dict) else None
+            if details:
+                try:
+                    pretty_display(details)
+                except Exception:
+                    st.write(details)
     # AI Analytics Autopilot
     # ----------------------------
     st.subheader("🤖 AI Analytics Autopilot")
@@ -1458,8 +1505,7 @@ else:
             st.session_state.output = route_to_engines(
                 df=df,
                 column_types=auto_column_types,
-                autofix=True,
-                industry=industry_value
+                autofix=True
             )
         save_outputs(st.session_state.output)
         st.success("✅ AI Analytics Autopilot Complete!")
@@ -1483,7 +1529,7 @@ if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
                     column_types[col] = "text"
                 else:
                     column_types[col] = "numerical"
-        st.session_state.output = route_to_engines(df, column_types, autofix=autofix, industry=industry_value)
+        st.session_state.output = route_to_engines(df, column_types, autofix=autofix)
         st.session_state.analysis_done = True  # Set flag after analysis completes
 
         # ----------------------------
@@ -1539,32 +1585,131 @@ if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
     # ----------------------------
     output = st.session_state.output
     save_outputs(output)
+
+    st.subheader("🧾 AI Analysis Summary")
+    diabetes_targets = output.get("diabetes_targets") or []
+    st.markdown(f"**Diabetes target columns detected:** {', '.join(diabetes_targets) if diabetes_targets else 'None explicitly detected.'}")
+    st.markdown(f"**Report file:** {output.get('report_path') or 'outputs/report.pdf'}")
+    st.markdown(f"**Graph folder:** {output.get('graph_folder') or GRAPH_FOLDER}")
+    st.markdown(f"**Prediction models:** {len(output.get('predictions', {}))}")
+    recommendation_count = sum(len(v) for v in output.get('recommendations', {}).values()) if isinstance(output.get('recommendations', {}), dict) else 0
+    st.markdown(f"**Recommendations generated:** {recommendation_count}")
+    decision_count = output.get('decisions', {}).get('decision_count', len(output.get('decisions', {}).get('decisions', [])))
+    st.markdown(f"**Clinical decisions generated:** {decision_count}")
+
     sections = [
         ("🛠 Problem Discovery", "problem_discovery"),
-        ("📌 Business Intelligence", "business_insights"),
-        (f"💡 Industry Smart Insights ({industry_value})", "industry_insights"),
+        ("📌 Clinical Intelligence", "clinical_insights"),
         ("📊 Predictions", "predictions"),
         ("🎯 Recommendations", "recommendations"),
         ("🧪 Self-Critic", "self_critic"),
-        ("🧠 Decision Intelligence", "decision_intelligence")
+        ("🧠 Decision Intelligence", "decisions"),
+        ("💡 Adaptive Insights", "adaptive_insights"),
+        ("📘 KPI Summary", "kpi_summary"),
+        ("📊 Quality Summary", "quality_summary"),
+        ("📝 Insight Summary", "insight_summary"),
+        ("📋 Overview Summary", "overview_summary")
     ]
 
     for title, key in sections:
         st.subheader(title)
-        st.json(output.get(key) or {})
+        if key == "problem_discovery":
+            display_issues(output.get(key) or {})
+        else:
+            pretty_display(output.get(key) or {})
+
+    st.subheader("🩺 Diabetes Detection & Recommendations")
+    if diabetes_targets:
+        st.write("Detected diabetes-related target columns:")
+        st.write(diabetes_targets)
+    else:
+        st.info("No explicit diabetes label target detected; the pipeline still analyzes feature risk signals.")
+
+    recommendations = output.get("recommendations", {}) or {}
+    if recommendations:
+        for target, rec_list in recommendations.items():
+            with st.expander(f"Recommendations for {target} ({len(rec_list)})", expanded=True):
+                pretty_display(rec_list)
+    else:
+        st.warning("No recommendations were generated.")
+
+    st.subheader("🧠 Clinical Decision Intelligence")
+    decisions = output.get("decisions") or {}
+
+    # If the decision engine explicitly blocked decisions, show why
+    if decisions.get("status") == "blocked":
+        st.error("Clinical decisioning blocked by AI self-critic for safety reasons.")
+        st.write("**Block reason:**", decisions.get("reason", "Not provided"))
+        st.write("**Self-critic summary:**")
+        pretty_display(output.get("self_critic") or {})
+
+        # Also surface any risk flags so the user can act
+        sc = output.get("self_critic") or {}
+        if sc.get("risk_flags"):
+            st.warning("Risk flags detected:")
+            for rf in sc.get("risk_flags", []):
+                st.write("-", rf)
+
+        # Offer lightweight tentative suggestions derived from recommendations
+        recs = output.get("recommendations") or {}
+        if recs:
+            st.info("Showing tentative (non-actionable) suggestions derived from recommendations:")
+            for target, rec_list in recs.items():
+                with st.expander(f"Tentative suggestions for {target} ({len(rec_list)})", expanded=False):
+                    for r in rec_list:
+                        st.write("-", r.get("recommendation") or r.get("text") or r)
+
+    else:
+        # Normal active decisioning
+        decision_items = decisions.get("decisions") or []
+        if decision_items:
+            for decision in decision_items:
+                with st.expander(f"{decision.get('decision', 'Decision')} — confidence {decision.get('confidence', 'N/A')}", expanded=False):
+                    st.write("**Recommended action:**", decision.get("recommended_action", "N/A"))
+                    st.write("**Reasoning:**")
+                    st.write(decision.get("reasoning", []))
+                    st.write("**Expected impact:**")
+                    st.write(decision.get("expected_impact", {}))
+        else:
+            # No decisions present — show diagnostics and a gentle fallback
+            st.info("No clinical decisions generated by the engine.")
+            st.write("**Self-critic:**")
+            pretty_display(output.get("self_critic") or {})
+
+            # Fallback: create simple suggestions from recommendations so user can see actionable ideas
+            recs = output.get("recommendations") or {}
+            if recs:
+                st.info("Fallback suggestions (derived from recommendations):")
+                for target, rec_list in recs.items():
+                    with st.expander(f"Fallback suggestions for {target} ({len(rec_list)})", expanded=False):
+                        for r in rec_list:
+                            text = r.get("recommendation") or r.get("text") or str(r)
+                            st.write("-", text)
+            else:
+                st.write("No recommendations available to derive fallback suggestions.")
 
     # Graphs
     st.subheader("📈 Graphs")
-    graph_folder = output.get("graph_folder") or "outputs/graphs"
-    if os.path.exists(graph_folder):
-        graphs = [f for f in os.listdir(graph_folder) if f.endswith(".png")]
+    graph_folder = output.get("graph_folder") or GRAPH_FOLDER
+    graph_paths = output.get("graphs") or []
+
+    displayed = False
+    if graph_paths:
+        for g in graph_paths:
+            gpath = g if os.path.isabs(g) else os.path.join(graph_folder, g)
+            if os.path.exists(gpath):
+                st.image(gpath, caption=os.path.basename(gpath), use_container_width=True)
+                displayed = True
+
+    if not displayed and os.path.exists(graph_folder):
+        graphs = [f for f in os.listdir(graph_folder) if f.lower().endswith((".png", ".jpg", ".jpeg"))]
         if graphs:
             for g in sorted(graphs):
                 st.image(os.path.join(graph_folder, g), caption=g, use_container_width=True)
-        else:
-            st.warning("No graphs found in graph folder.")
-    else:
-        st.warning("Graph folder does not exist.")
+            displayed = True
+
+    if not displayed:
+        st.warning("No graphs found in the output graph folder. Run analysis to generate visual graph files.")
 
     # Downloads
     st.subheader("💾 Download Outputs")
@@ -1592,7 +1737,7 @@ if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
     st.subheader("💡 Adaptive / Self-Learning Insights")
     adaptive_insights = output.get("adaptive_insights") or {}
     if adaptive_insights:
-        st.json(adaptive_insights)
+        pretty_display(adaptive_insights)
         st.download_button(
             "Download Adaptive Insights JSON",
             data=pd.Series(adaptive_insights).to_json(),

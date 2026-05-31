@@ -3,27 +3,50 @@ import warnings
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from engines.medical_vision_engine import generate_graphs, save_predictions_and_recommendations
-from engines.clinical_nlp_engine import run_nlp_analysis
-from engines.predictive_engine import run_predictive_model
-from engines.problem_discovery import discover_problem
-from engines.self_critic import self_critic
-from engines.decision_engine import run_decision_intelligence
-from engines.business_engine import run_business_intelligence
-from engines.business_graph_engine import generate_business_graphs
-from engines.autofix_engine import apply_autofix
-from engines.explanation_engine import explain_predictions
-from engines.adaptive_engine import run_adaptive_analytics
-from engines.talk_to_data import talk_to_data_ai
-from engines.recommendation_engine import run_recommendations
+try:
+    from ..engines.medical_vision_engine import generate_graphs, save_predictions_and_recommendations
+    from ..engines.clinical_nlp_engine import run_nlp_analysis
+    from ..engines.predictive_engine import run_predictive_model
+    from ..engines.problem_discovery import discover_problem
+    from ..engines.self_critic import self_critic
+    from ..engines.decision_engine import run_decision_intelligence
+    from ..engines.business_engine import run_business_intelligence
+    from ..engines.business_graph_engine import generate_business_graphs
+    from ..engines.autofix_engine import apply_autofix
+    from ..engines.explanation_engine import explain_predictions
+    from ..engines.recommendation_engine import run_recommendations
+    from ..engines.adaptive_engine import run_adaptive_analytics
+    from ..engines.talk_to_data import talk_to_data_ai
 
-# =========================
-# DIABETES CORE ENGINES
-# =========================
-from core.diabetes_kpi_engine import detect_kpis  # now: clinical biomarkers engine
-from core.clinical_data_quality_engine import data_quality_score
-from core.diabetes_insight_engine import auto_insights as generate_clinical_insights
-from core.diabetes_overview_engine import dataset_overview
+    # =========================
+    # DIABETES CORE ENGINES
+    # =========================
+    from .diabetes_kpi_engine import detect_kpis  # now: clinical biomarkers engine
+    from .clinical_data_quality_engine import data_quality_score
+    from .diabetes_insight_engine import auto_insights as generate_clinical_insights
+    from .diabetes_overview_engine import dataset_overview
+except ImportError:
+    from engines.medical_vision_engine import generate_graphs, save_predictions_and_recommendations
+    from engines.clinical_nlp_engine import run_nlp_analysis
+    from engines.predictive_engine import run_predictive_model
+    from engines.problem_discovery import discover_problem
+    from engines.self_critic import self_critic
+    from engines.decision_engine import run_decision_intelligence
+    from engines.business_engine import run_business_intelligence
+    from engines.business_graph_engine import generate_business_graphs
+    from engines.autofix_engine import apply_autofix
+    from engines.explanation_engine import explain_predictions
+    from engines.recommendation_engine import run_recommendations
+    from engines.adaptive_engine import run_adaptive_analytics
+    from engines.talk_to_data import talk_to_data_ai
+
+    # =========================
+    # DIABETES CORE ENGINES
+    # =========================
+    from core.diabetes_kpi_engine import detect_kpis  # now: clinical biomarkers engine
+    from core.clinical_data_quality_engine import data_quality_score
+    from core.diabetes_insight_engine import auto_insights as generate_clinical_insights
+    from core.diabetes_overview_engine import dataset_overview
 
 warnings.filterwarnings("ignore")
 
@@ -63,6 +86,7 @@ def _coerce_dataframe_types(df):
 
 def _find_diabetes_classification_targets(df):
     diabetes_candidates = []
+
     for col in df.columns:
         col_lower = col.lower()
         if any(token in col_lower for token in ["diabetes", "diabetic", "has_diabetes", "diabetes_status", "diabetes_flag", "diagnosis"]):
@@ -71,10 +95,9 @@ def _find_diabetes_classification_targets(df):
 
         if any(token in col_lower for token in ["outcome", "class", "label", "status"]):
             values = df[col].dropna().astype(str).str.lower().unique()
-            if len(values) == 0:
+            if not values.size:
                 continue
-            check_values = set(values.tolist())
-            if check_values & {"0", "1", "yes", "no", "positive", "negative", "diabetes", "diabetic", "non-diabetic", "nondiabetic", "healthy", "sick"}:
+            if set(values.tolist()) & {"0", "1", "yes", "no", "positive", "negative", "diabetes", "diabetic", "non-diabetic", "nondiabetic", "healthy", "sick"}:
                 diabetes_candidates.append(col)
 
     return diabetes_candidates
@@ -272,25 +295,6 @@ def route_to_engines(df, column_types, autofix=True, context=None, query=None):
         folder=BASE_OUTPUT
     )
 
-    report_path = os.path.join(BASE_OUTPUT, "report.pdf")
-    try:
-        from fpdf import FPDF
-
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", "B", 16)
-        pdf.cell(0, 10, "KENSOLO AI Diabetes Report", ln=True, align="C")
-        pdf.ln(10)
-        pdf.set_font("Arial", size=12)
-        pdf.multi_cell(
-            0,
-            8,
-            "This report summarizes AI predictions, clinical recommendations, and decision intelligence generated for the diabetes analytics pipeline."
-        )
-        pdf.output(report_path)
-    except Exception:
-        report_path = None
-
     return {
         "kpi_summary": kpi_summary,
         "quality_summary": quality_summary,
@@ -306,8 +310,5 @@ def route_to_engines(df, column_types, autofix=True, context=None, query=None):
         "decisions": decision_intelligence,
         "adaptive_insights": adaptive_insights,
         "talk_to_data_result": talk_to_data_result,
-        "saved_files": saved_files,
-        "graph_folder": GRAPH_FOLDER,
-        "report_path": report_path,
-        "diabetes_targets": diabetes_targets
+        "saved_files": saved_files
     }
