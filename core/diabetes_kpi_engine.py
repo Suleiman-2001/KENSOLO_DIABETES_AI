@@ -113,3 +113,5 @@ def detect_kpis(df: pd.DataFrame):
         "clinical_risk_score": risk_score,
         "risk_level": risk_level
     }
+
+    
