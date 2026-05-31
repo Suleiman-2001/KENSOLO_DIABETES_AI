@@ -3,6 +3,10 @@ streamlit>=1.30.0
 pandas
 numpy
 scikit-learn
+scipy
+shap
+joblib
+pymongo
 matplotlib
 seaborn
 plotly
@@ -12,3 +16,4 @@ Pillow
 reportlab
 fpdf2
 altair
+xgboost
