@@ -185,6 +185,22 @@ def main():
     for k, v in output.get("self_critic", {}).items():
         print(f"{k}: {v}")
 
+    print("\n🧬 Feature Engineering:")
+    for k, v in output.get("feature_engineering", {}).items():
+        print(f"{k}: {v}")
+
+    print("\n📈 Risk Scoring:")
+    for k, v in output.get("risk_scoring", {}).items():
+        print(f"{k}: {v}")
+
+    print("\n🛰 Model Monitoring:")
+    for k, v in output.get("model_monitoring", {}).items():
+        print(f"{k}: {v}")
+
+    print("\n🔎 Diabetes Detection:")
+    for k, v in output.get("diabetes_detection", {}).items():
+        print(f"{k}: {v}")
+
     print("\n🧠 Clinical Decisions:")
     for decision in output.get("decisions", {}).get("decisions", []):
         print(f"- {decision.get('decision')}: {decision.get('recommended_action', 'N/A')} (confidence={decision.get('confidence')})")
@@ -204,6 +220,10 @@ def main():
     print("\n🚀 KENSOLO AI processing complete!")
     print(f"📄 PDF report saved at: {output.get('report_path')}")
     print(f"📈 Graphs saved in folder: {output.get('graph_folder')}")
+    if output.get("risk_scoring"):
+        print(f"🩺 Average diabetes risk score: {output.get('risk_scoring', {}).get('mean_risk_score', output.get('risk_scoring', {}).get('average_risk', 'N/A'))}")
+    if output.get("model_monitoring"):
+        print(f"🛰 Selected model: {output.get('model_monitoring', {}).get('training', {}).get('best_model', output.get('model_monitoring', {}).get('selected_model', 'N/A'))}")
 
 
 if __name__ == "__main__":

@@ -105,12 +105,48 @@ def save_to_excel(output_dict, folder_path="outputs/excel_exports"):
                     df_fallback.to_excel(writer, sheet_name=f"BI_{key}"[:31], index=False)
 
         # ============================
+        # 4b️⃣ AI MODEL GOVERNANCE
+        # ============================
+        extra_sections = {
+            "feature_engineering": output_dict.get("feature_engineering", {}),
+            "risk_scoring": output_dict.get("risk_scoring", {}),
+            "model_monitoring": output_dict.get("model_monitoring", {}),
+            "diabetes_detection": output_dict.get("diabetes_detection", {}),
+            "model_leaderboard": output_dict.get("model_leaderboard", []),
+            "shap_explanations": output_dict.get("shap_explanations", {}),
+        }
+
+        for key, value in extra_sections.items():
+            if not value:
+                continue
+
+            try:
+                if isinstance(value, dict):
+                    if any(isinstance(v, (dict, list)) for v in value.values()):
+                        df_extra = pd.json_normalize(value, sep="_")
+                    else:
+                        df_extra = pd.DataFrame([value])
+                elif isinstance(value, list):
+                    df_extra = pd.json_normalize(value) if value and isinstance(value[0], dict) else pd.DataFrame({"value": value})
+                else:
+                    df_extra = pd.DataFrame({"value": [str(value)]})
+
+                sheet_name = f"AI_{key}"[:31]
+                df_extra.to_excel(writer, sheet_name=sheet_name, index=False)
+
+            except Exception:
+                df_fallback = pd.DataFrame({"value": [str(value)]})
+                df_fallback.to_excel(writer, sheet_name=f"AI_{key}"[:31], index=False)
+
+        # ============================
         # 5️⃣ META SUMMARY SHEET
         # ============================
         summary = {
             "total_targets": len(predictions),
             "total_recommendation_groups": len(recommendations),
             "has_problem_discovery": bool(problems),
+            "has_model_monitoring": bool(output_dict.get("model_monitoring")),
+            "has_risk_scoring": bool(output_dict.get("risk_scoring")),
         }
 
         df_summary = pd.DataFrame([summary])

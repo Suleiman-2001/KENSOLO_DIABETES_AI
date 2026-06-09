@@ -5,7 +5,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from engines.medical_vision_engine import generate_graphs, save_predictions_and_recommendations
 from engines.clinical_nlp_engine import run_nlp_analysis
-from engines.predictive_engine import run_predictive_model
 from engines.problem_discovery import discover_problem
 from engines.self_critic import self_critic
 from engines.decision_engine import run_decision_intelligence
@@ -16,6 +15,8 @@ from engines.explanation_engine import explain_predictions
 from engines.adaptive_engine import run_adaptive_analytics
 from engines.talk_to_data import talk_to_data_ai
 from engines.recommendation_engine import run_recommendations
+from engines.diabetes_automl_engine import run_predictive_model as run_advanced_predictive_ai
+from engines.memory_engine import track_dataset_history
 
 # =========================
 # DIABETES CORE ENGINES
@@ -101,13 +102,9 @@ def process_chunk(chunk_df, column_types):
             if t == "categorical"
         ]
 
-        targets_dict = {"numerical": numerical_cols, "categorical": categorical_cols}
-
-        results["predictions"] = run_predictive_model(chunk_df, targets_dict)
-
         results["graph_files"] = generate_graphs(
             chunk_df,
-            targets_dict,
+            {"numerical": numerical_cols, "categorical": categorical_cols},
             folder=GRAPH_FOLDER
         )
 
@@ -177,6 +174,27 @@ def route_to_engines(df, column_types, autofix=True, context=None, query=None):
     aggregated_nlp = None
     aggregated_graphs = []
     problem_discovery = {}
+    monitoring_summary = {}
+
+    advanced_ai = run_advanced_predictive_ai(
+        working_df,
+        diabetes_targets
+    )
+
+    aggregated_predictions = advanced_ai.get("predictions", {})
+    feature_engineering = advanced_ai.get("feature_engineering", {})
+    model_monitoring = advanced_ai.get("model_monitoring", {})
+    risk_scoring = advanced_ai.get("risk_scoring", {})
+    diabetes_detection = advanced_ai.get("diabetes_detection", {})
+
+    if aggregated_predictions:
+        aggregated_predictions, monitoring_summary = track_dataset_history(working_df, aggregated_predictions)
+
+    if monitoring_summary:
+        model_monitoring = {
+            **model_monitoring,
+            "dataset_monitoring": monitoring_summary,
+        }
 
     # ----------------------------
     # processing
@@ -200,7 +218,6 @@ def route_to_engines(df, column_types, autofix=True, context=None, query=None):
 
     else:
         r = process_chunk(working_df, column_types)
-        aggregated_predictions = r.get("predictions", {})
         aggregated_graphs = r.get("graph_files", [])
         problem_discovery = r.get("problem_discovery", {})
 
@@ -309,5 +326,10 @@ def route_to_engines(df, column_types, autofix=True, context=None, query=None):
         "saved_files": saved_files,
         "graph_folder": GRAPH_FOLDER,
         "report_path": report_path,
-        "diabetes_targets": diabetes_targets
+        "diabetes_targets": diabetes_targets,
+        "feature_engineering": feature_engineering,
+        "model_monitoring": model_monitoring,
+        "risk_scoring": risk_scoring,
+        "diabetes_detection": diabetes_detection,
+        "dataset_monitoring": monitoring_summary,
     }

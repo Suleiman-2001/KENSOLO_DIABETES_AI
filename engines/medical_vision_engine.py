@@ -4,6 +4,23 @@ import json
 import pandas as pd
 
 
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+
+    try:
+        json.dumps(value)
+        return value
+    except Exception:
+        return str(value)
+
+
 # ============================
 # 1️⃣ CLINICAL GRAPH ENGINE
 # ============================
@@ -78,10 +95,10 @@ def save_predictions_and_recommendations(predictions, recommendations, folder="o
     # JSON EXPORTS
     # ----------------------------
     with open(os.path.join(folder, "predictions.json"), "w") as f:
-        json.dump(predictions, f, indent=4)
+        json.dump(_json_safe(predictions), f, indent=4)
 
     with open(os.path.join(folder, "recommendations.json"), "w") as f:
-        json.dump(recommendations, f, indent=4)
+        json.dump(_json_safe(recommendations), f, indent=4)
 
     # ----------------------------
     # FLATTENED PREDICTIONS CSV
@@ -148,7 +165,7 @@ def save_predictions_and_recommendations(predictions, recommendations, folder="o
         index=False
     )
 
-    print(f"✅ Clinical exports saved in: {folder}")
+    print(f"Clinical exports saved in: {folder}")
 
     return {
         "predictions_json": os.path.join(folder, "predictions.json"),

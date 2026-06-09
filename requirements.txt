@@ -17,3 +17,7 @@ reportlab
 fpdf2
 altair
 xgboost
+lightgbm
+catboost
+optuna
+imbalanced-learn

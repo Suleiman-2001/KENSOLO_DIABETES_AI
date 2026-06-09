@@ -14,6 +14,23 @@ import streamlit as st
 df = None
 column_types = None
 autofix = False
+
+
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+
+    try:
+        json.dumps(value)
+        return value
+    except Exception:
+        return str(value)
 # ----------------------------
 # Function to save predictions, recommendations, and report
 # ----------------------------
@@ -27,11 +44,11 @@ def save_outputs(output):
 
     # Predictions JSON
     with open("outputs/predictions.json", "w") as f:
-        json.dump(output.get("predictions", {}), f, indent=4)
+        json.dump(_json_safe(output.get("predictions", {})), f, indent=4)
 
     # Recommendations JSON
     with open("outputs/recommendations.json", "w") as f:
-        json.dump(output.get("recommendations", {}), f, indent=4)
+        json.dump(_json_safe(output.get("recommendations", {})), f, indent=4)
 
     # Predictions CSV
     pred_rows = []
@@ -1069,6 +1086,7 @@ if df is not None and not df.empty:
     # Feature Engineering (Optional)
     # -----------------------------
     numeric_cols = df_filtered.select_dtypes(include=np.number).columns.tolist()
+    categorical_cols = df_filtered.select_dtypes(exclude=np.number).columns.tolist()
     
     # Dynamic numeric feature if stock-like columns exist
     if 'Open' in df_filtered.columns and 'Close' in df_filtered.columns:
@@ -1543,11 +1561,11 @@ if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
 
         # Predictions JSON
         with open("outputs/predictions.json", "w") as f:
-            json.dump(output.get("predictions", {}), f, indent=4)
+            json.dump(_json_safe(output.get("predictions", {})), f, indent=4)
 
         # Recommendations JSON
         with open("outputs/recommendations.json", "w") as f:
-            json.dump(output.get("recommendations", {}), f, indent=4)
+            json.dump(_json_safe(output.get("recommendations", {})), f, indent=4)
 
         # Predictions CSV
         pred_rows = []
@@ -1596,6 +1614,9 @@ if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
     st.markdown(f"**Recommendations generated:** {recommendation_count}")
     decision_count = output.get('decisions', {}).get('decision_count', len(output.get('decisions', {}).get('decisions', [])))
     st.markdown(f"**Clinical decisions generated:** {decision_count}")
+    st.markdown(f"**Selected model:** {output.get('model_monitoring', {}).get('training', {}).get('best_model', output.get('model_monitoring', {}).get('selected_model', 'N/A'))}")
+    st.markdown(f"**Average risk score:** {output.get('risk_scoring', {}).get('mean_risk_score', output.get('risk_scoring', {}).get('average_risk', 'N/A'))}")
+    st.markdown(f"**Target mode:** {output.get('diabetes_detection', {}).get('strategy', 'N/A')}")
 
     sections = [
         ("🛠 Problem Discovery", "problem_discovery"),
@@ -1603,6 +1624,10 @@ if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
         ("📊 Predictions", "predictions"),
         ("🎯 Recommendations", "recommendations"),
         ("🧪 Self-Critic", "self_critic"),
+        ("🧬 Feature Engineering", "feature_engineering"),
+        ("📈 Risk Scoring", "risk_scoring"),
+        ("🛰 Model Monitoring", "model_monitoring"),
+        ("🔎 Diabetes Detection", "diabetes_detection"),
         ("🧠 Decision Intelligence", "decisions"),
         ("💡 Adaptive Insights", "adaptive_insights"),
         ("📘 KPI Summary", "kpi_summary"),
