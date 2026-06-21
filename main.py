@@ -1,8 +1,15 @@
 import os
+import sys
 import warnings
 import pandas as pd
 from tkinter import Tk
 from tkinter.filedialog import askopenfilename
+
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 # ----------------------------
 # Suppress warnings
@@ -30,25 +37,33 @@ def main():
     from core.router import route_to_engines
     from engines import export_engine
 
-    Tk().withdraw()
+    root = Tk()
+    root.withdraw()
+    root.update_idletasks()
 
     # ----------------------------
     # 1️⃣ Select dataset
     # ----------------------------
-    file_path = askopenfilename(
-        title="Select your dataset",
-        filetypes=[
-            ("All Supported", "*.csv;*.xlsx;*.xls;*.json;*.parquet;*.tsv;*.ods;*.h5;*.hdf5;*.db;*.sqlite"),
-            ("CSV files", "*.csv"),
-            ("Excel files", "*.xlsx;*.xls;*.ods"),
-            ("JSON", "*.json"),
-            ("Parquet", "*.parquet"),
-            ("TSV", "*.tsv"),
-            ("HDF5", "*.h5;*.hdf5"),
-            ("SQLite", "*.db;*.sqlite"),
-            ("All files", "*.*")
-        ]
-    )
+    try:
+        file_path = askopenfilename(
+            title="Select your dataset",
+            filetypes=[
+                ("All Supported", "*.csv;*.xlsx;*.xls;*.json;*.parquet;*.tsv;*.ods;*.h5;*.hdf5;*.db;*.sqlite"),
+                ("CSV files", "*.csv"),
+                ("Excel files", "*.xlsx;*.xls;*.ods"),
+                ("JSON", "*.json"),
+                ("Parquet", "*.parquet"),
+                ("TSV", "*.tsv"),
+                ("HDF5", "*.h5;*.hdf5"),
+                ("SQLite", "*.db;*.sqlite"),
+                ("All files", "*.*")
+            ]
+        )
+    finally:
+        try:
+            root.destroy()
+        except Exception:
+            pass
 
     if not file_path:
         print("No file selected. Exiting...")
@@ -184,6 +199,26 @@ def main():
     print("\n🧪 Self Critic:")
     for k, v in output.get("self_critic", {}).items():
         print(f"{k}: {v}")
+
+    print("\n🔍 Explainability (SHAP/LIME):")
+    for target, explanation in output.get("explanations", {}).items():
+        if explanation.get("feature_importance"):
+            top_features = ", ".join(item.get("feature", "") for item in explanation.get("feature_importance", [])[:5])
+            print(f"- {target} (SHAP top features): {top_features}")
+        if explanation.get("lime_explanations"):
+            lime_features = explanation.get("lime_explanations", [])[0].get("top_features", [])
+            lime_text = ", ".join(item.get("feature", "") for item in lime_features[:5])
+            print(f"- {target} (LIME top features): {lime_text}")
+
+    print("\n📘 Experiment Summary:")
+    for k, v in output.get("experiment_summary", {}).items():
+        print(f"- {k}: {v}")
+
+    print("\n🏆 Model leaderboard:")
+    for item in output.get("model_leaderboard", []):
+        if item.get("status") == "success":
+            cv_metric = item.get("cv_primary") if item.get("cv_primary") is not None else item.get("cv_accuracy")
+            print(f"- {item.get('model')}: cv={cv_metric} | holdout_f1={item.get('holdout_f1')}")
 
     print("\n🧬 Feature Engineering:")
     for k, v in output.get("feature_engineering", {}).items():

@@ -1,7 +1,14 @@
 import os
+import sys
 import warnings
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 from engines.medical_vision_engine import generate_graphs, save_predictions_and_recommendations
 from engines.clinical_nlp_engine import run_nlp_analysis
@@ -186,6 +193,7 @@ def route_to_engines(df, column_types, autofix=True, context=None, query=None):
     model_monitoring = advanced_ai.get("model_monitoring", {})
     risk_scoring = advanced_ai.get("risk_scoring", {})
     diabetes_detection = advanced_ai.get("diabetes_detection", {})
+    model_leaderboard = advanced_ai.get("model_leaderboard", [])
 
     if aggregated_predictions:
         aggregated_predictions, monitoring_summary = track_dataset_history(working_df, aggregated_predictions)
@@ -283,6 +291,53 @@ def route_to_engines(df, column_types, autofix=True, context=None, query=None):
     # ----------------------------
     # OUTPUT EXPORTS
     # ----------------------------
+    selected_model = None
+    selected_model_metrics = {}
+    final_target = None
+
+    for target, info in aggregated_predictions.items():
+        if info.get("best_model"):
+            selected_model = info.get("best_model")
+            final_target = target
+            selected_model_metrics = {
+                "target": target,
+                "task": info.get("task", "unknown"),
+                "accuracy": info.get("accuracy"),
+                "precision": info.get("precision"),
+                "recall": info.get("recall"),
+                "f1_score": info.get("f1_score"),
+                "roc_auc": info.get("roc_auc"),
+                "best_model": info.get("best_model"),
+            }
+            break
+
+    best_cv_model = None
+    if model_monitoring.get("training", {}).get("best_model"):
+        best_cv_model = model_monitoring["training"].get("best_model")
+
+    baseline_model = None
+    if model_leaderboard:
+        for item in model_leaderboard:
+            if item.get("status") == "success":
+                baseline_model = item.get("model")
+                break
+
+    experiment_summary = {
+        "target_count": len(aggregated_predictions),
+        "targets": list(aggregated_predictions.keys()),
+        "validation_strategy": (
+            "Stratified train/test split (20% holdout) plus cross-validation "
+            "for model selection and leaderboard ranking"
+            if model_leaderboard else
+            "Validation strategy not fully available"
+        ),
+        "baseline_model": baseline_model,
+        "final_model": selected_model or best_cv_model,
+        "final_target": final_target,
+        "selected_model_metrics": selected_model_metrics,
+        "leaderboard_count": len(model_leaderboard),
+    }
+
     saved_files = save_predictions_and_recommendations(
         aggregated_predictions,
         recommendations,
@@ -332,4 +387,6 @@ def route_to_engines(df, column_types, autofix=True, context=None, query=None):
         "risk_scoring": risk_scoring,
         "diabetes_detection": diabetes_detection,
         "dataset_monitoring": monitoring_summary,
+        "experiment_summary": experiment_summary,
+        "model_leaderboard": model_leaderboard,
     }

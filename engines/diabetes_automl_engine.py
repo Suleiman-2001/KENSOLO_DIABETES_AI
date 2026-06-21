@@ -780,16 +780,16 @@ def run_predictive_model(df, targets_dict=None):
             "diabetes_detection": {
                 "detected_targets": diabetes_targets or [],
                 "prediction_target": target_name,
-                "strategy": target_info["strategy"],
+                "strategy": target_source,
                 "future_likelihood_supported": True,
             },
             "model_monitoring": {
                 "status": "insufficient_class_balance",
-                "row_count": int(len(modeling_df)),
-                "column_count": int(modeling_df.shape[1]),
+                "row_count": int(len(modeling_frame)),
+                "column_count": int(modeling_frame.shape[1]),
             },
             "risk_scoring": {
-                "mode": target_info["strategy"],
+                "mode": target_source,
                 "high_risk_share": 0.0,
                 "average_risk": 0.0,
                 "sample_scores": [],

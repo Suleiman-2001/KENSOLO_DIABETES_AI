@@ -5,6 +5,7 @@ numpy
 scikit-learn
 scipy
 shap
+lime
 joblib
 pymongo
 matplotlib

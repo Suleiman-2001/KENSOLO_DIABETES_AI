@@ -56,17 +56,32 @@ def generate_pdf_report(output):
                 return
 
             for k, v in content.items():
-                line = f"{k}: {v}"
-                for l in wrap(clean_text(line)):
-                    pdf.multi_cell(0, 6, l)
+                if isinstance(v, (dict, list)):
+                    line = f"{k}:"
+                    for l in wrap(clean_text(line)):
+                        pdf.multi_cell(0, 6, l)
+                    if isinstance(v, dict):
+                        for sub_k, sub_v in v.items():
+                            sub_line = f"  - {sub_k}: {sub_v}"
+                            for l in wrap(clean_text(sub_line)):
+                                pdf.multi_cell(0, 6, l)
+                    else:
+                        for item in v[:50]:
+                            item_line = f"  - {item}"
+                            for l in wrap(clean_text(item_line)):
+                                pdf.multi_cell(0, 6, l)
+                else:
+                    line = f"{k}: {v}"
+                    for l in wrap(clean_text(line)):
+                        pdf.multi_cell(0, 6, l)
 
         # ---------------- list handling ----------------
         elif isinstance(content, list):
             if not content:
                 pdf.multi_cell(0, 6, "No data available.")
             else:
-                for item in content[:200]:  # prevent overload
-                    for l in wrap(clean_text(item)):
+                for item in content[:200]:
+                    for l in wrap(clean_text(str(item))):
                         pdf.multi_cell(0, 6, l)
 
         # ---------------- string handling ----------------
@@ -77,14 +92,23 @@ def generate_pdf_report(output):
         else:
             pdf.multi_cell(0, 6, clean_text(str(content)))
 
+    def add_metric_block(title, metrics):
+        if not metrics:
+            return
+        add_section(title, metrics)
+
     # ----------------------------
     # CORE SECTIONS
     # ----------------------------
+    add_section("Experiment Summary", output.get("experiment_summary", {}))
     add_section("Problem Discovery", output.get("problem_discovery", {}))
-    add_section("Predictions", output.get("predictions", {}))
+    add_section("Target-Level Evaluation", output.get("predictions", {}))
     add_section("Recommendations", output.get("recommendations", {}))
+    add_section("Model Leaderboard", output.get("model_leaderboard", []))
     add_section("Self Critic", output.get("self_critic", {}))
-    add_section("Decision Intelligence", output.get("decision_intelligence", {}))
+    add_section("Decision Intelligence", output.get("decisions", {}))
+    add_section("Risk Scoring", output.get("risk_scoring", {}))
+    add_section("Model Monitoring", output.get("model_monitoring", {}))
 
     # ----------------------------
     # GRAPHS
