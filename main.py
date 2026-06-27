@@ -152,13 +152,35 @@ def main():
     print(f"✅ Loaded dataset: {df.shape[0]} rows, {df.shape[1]} columns")
 
     # ----------------------------
-    # 4️⃣ FIXED COLUMN TYPE DETECTION
+    # 4️⃣ Automatic dataset detection layer
     # ----------------------------
+    target_candidates = [
+        col for col in df.columns
+        if df[col].nunique() < 20 and df[col].dtype != "object"
+    ]
+
+    selected_target = None
+    if target_candidates:
+        numeric_df = df.select_dtypes(include=["number"])
+        corr_matrix = numeric_df.corr().abs() if not numeric_df.empty else pd.DataFrame()
+
+        scored_candidates = []
+        for candidate in target_candidates:
+            if candidate in corr_matrix.columns:
+                corr_values = corr_matrix[candidate].drop(labels=[candidate], errors="ignore").dropna()
+                score = float(corr_values.mean()) if not corr_values.empty else 0.0
+            else:
+                score = 0.0
+            scored_candidates.append((candidate, score))
+
+        selected_target = max(scored_candidates, key=lambda x: x[1])[0]
+
     column_types = {}
 
     for col in df.columns:
         col_lower = col.lower()
         dtype = df[col].dtype
+        nunique = df[col].nunique(dropna=True)
 
         if col_lower.endswith("id") or col_lower == "id":
             column_types[col] = "identifier"
@@ -166,14 +188,21 @@ def main():
         elif "image" in col_lower or col_lower.endswith("_path"):
             column_types[col] = "image"
 
-        elif pd.api.types.is_numeric_dtype(dtype):
-            column_types[col] = "numerical"
-
         elif pd.api.types.is_datetime64_any_dtype(dtype):
             column_types[col] = "datetime"
 
+        elif pd.api.types.is_numeric_dtype(dtype):
+            column_types[col] = "categorical" if nunique < 20 else "numerical"
+
+        elif pd.api.types.is_object_dtype(dtype) or pd.api.types.is_categorical_dtype(dtype) or pd.api.types.is_bool_dtype(dtype):
+            column_types[col] = "categorical"
+
         else:
             column_types[col] = "text"
+
+    print(f"🔎 Target candidates: {target_candidates}")
+    if selected_target:
+        print(f"🎯 Selected target candidate: {selected_target}")
 
     # ----------------------------
     # 5️⃣ Run AI engine
@@ -186,6 +215,14 @@ def main():
     # ----------------------------
     print("\n🛠 Problem Discovery:")
     for k, v in output.get("problem_discovery", {}).items():
+        print(f"{k}: {v}")
+
+    print("\n🧭 Task Detection:")
+    for k, v in output.get("task_detection", {}).items():
+        print(f"{k}: {v}")
+
+    print("\n🧪 Unsupervised Learning:")
+    for k, v in output.get("unsupervised_learning", {}).items():
         print(f"{k}: {v}")
 
     print("\n📊 Predictions:")
@@ -239,6 +276,19 @@ def main():
     print("\n🧠 Clinical Decisions:")
     for decision in output.get("decisions", {}).get("decisions", []):
         print(f"- {decision.get('decision')}: {decision.get('recommended_action', 'N/A')} (confidence={decision.get('confidence')})")
+
+    print("\n📅 Longitudinal Forecasts:")
+    for target, forecast_list in output.get("longitudinal_forecasts", {}).items():
+        years_text = ", ".join(str(item.get("years")) for item in forecast_list if item.get("years") is not None)
+        print(f"- {target}: forecast horizons (years) -> {years_text if years_text else 'N/A'}")
+
+    print("\n🧩 Multimodal Layer:")
+    multimodal = output.get("multimodal_layer", {})
+    modalities = multimodal.get("modalities", {})
+    print(f"- Architecture: {multimodal.get('architecture', 'N/A')}")
+    print(f"- Tabular available: {modalities.get('tabular', {}).get('available', False)}")
+    print(f"- EHR available: {modalities.get('ehr', {}).get('available', False)}")
+    print(f"- Imaging available: {modalities.get('imaging', {}).get('available', False)}")
 
     # ----------------------------
     # 7️⃣ Export Excel

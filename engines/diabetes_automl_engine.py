@@ -80,6 +80,15 @@ try:
 except Exception:
     track_dataset_history = None
 
+try:
+    from medical_plugin.diabetes_rules import (
+        build_surrogate_diabetes_target,
+        engineer_medical_features,
+    )
+except Exception:
+    build_surrogate_diabetes_target = None
+    engineer_medical_features = None
+
 
 POSITIVE_TOKENS = {
     "1",
@@ -121,188 +130,38 @@ def _normalize_text(value):
     return str(value).strip().lower()
 
 
-def _find_matching_column(columns, tokens):
-    for column in columns:
-        lower = column.lower()
-        if any(token in lower for token in tokens):
-            return column
-    return None
-
-
 def _detect_diabetes_targets(df):
-    candidates = []
-    for column in df.columns:
-        lower = column.lower()
-        if any(token in lower for token in ["diabetes", "diabetic", "has_diabetes", "diabetes_status", "diabetes_flag", "diagnosis", "outcome", "label", "target"]):
-            candidates.append(column)
-            continue
-
-        if df[column].nunique(dropna=True) <= 2:
-            values = {_normalize_text(v) for v in df[column].dropna().unique()}
-            if values & POSITIVE_TOKENS and values & NEGATIVE_TOKENS:
-                candidates.append(column)
-
-    return list(dict.fromkeys(candidates))
+    return [col for col in df.columns if col.lower().strip() == "outcome"]
 
 
-def _clinical_columns(df):
-    columns = df.columns.tolist()
-    return {
-        "glucose": _find_matching_column(columns, ["glucose", "blood_glucose", "gluc"]),
-        "bmi": _find_matching_column(columns, ["bmi", "body_mass_index"]),
-        "age": _find_matching_column(columns, ["age"]),
-        "insulin": _find_matching_column(columns, ["insulin"]),
-        "blood_pressure": _find_matching_column(columns, ["bloodpressure", "blood_pressure", "bp", "pressure"]),
-        "pregnancies": _find_matching_column(columns, ["pregnan"]),
-    }
+def _select_preferred_diabetes_target(candidates):
+    if not candidates:
+        return []
+
+    return [candidates[0]]
 
 
 def _engineer_features(df):
-    engineered = df.copy()
-    clinical = _clinical_columns(engineered)
-    feature_notes = []
+    if callable(engineer_medical_features):
+        return engineer_medical_features(df)
 
-    numeric_like = engineered.select_dtypes(include=[np.number]).copy()
-
-    if clinical["glucose"] and clinical["bmi"]:
-        engineered["glucose_bmi_interaction"] = engineered[clinical["glucose"]].fillna(0) * engineered[clinical["bmi"]].fillna(0)
-        feature_notes.append("glucose_bmi_interaction")
-
-    if clinical["age"] and clinical["bmi"]:
-        engineered["age_bmi_interaction"] = engineered[clinical["age"]].fillna(0) * engineered[clinical["bmi"]].fillna(0)
-        feature_notes.append("age_bmi_interaction")
-
-    if clinical["glucose"]:
-        engineered["glucose_high_flag"] = (engineered[clinical["glucose"]] >= 140).astype(float)
-        engineered["glucose_very_high_flag"] = (engineered[clinical["glucose"]] >= 180).astype(float)
-        engineered["glucose_band"] = pd.cut(
-            engineered[clinical["glucose"]],
-            bins=[-np.inf, 99, 125, 180, np.inf],
-            labels=["normal", "elevated", "high", "very_high"],
-        ).astype(str)
-        feature_notes.extend(["glucose_high_flag", "glucose_very_high_flag", "glucose_band"])
-
-    if clinical["bmi"]:
-        engineered["bmi_overweight_flag"] = (engineered[clinical["bmi"]] >= 25).astype(float)
-        engineered["bmi_obesity_flag"] = (engineered[clinical["bmi"]] >= 30).astype(float)
-        engineered["bmi_band"] = pd.cut(
-            engineered[clinical["bmi"]],
-            bins=[-np.inf, 18.5, 25, 30, np.inf],
-            labels=["underweight", "normal", "overweight", "obese"],
-        ).astype(str)
-        feature_notes.extend(["bmi_overweight_flag", "bmi_obesity_flag", "bmi_band"])
-
-    if clinical["age"]:
-        engineered["age_senior_flag"] = (engineered[clinical["age"]] >= 50).astype(float)
-        engineered["age_band"] = pd.cut(
-            engineered[clinical["age"]],
-            bins=[-np.inf, 30, 45, 60, np.inf],
-            labels=["young", "midlife", "older", "senior"],
-        ).astype(str)
-        feature_notes.extend(["age_senior_flag", "age_band"])
-
-    if clinical["insulin"]:
-        engineered["insulin_high_flag"] = (engineered[clinical["insulin"]] >= 150).astype(float)
-        feature_notes.append("insulin_high_flag")
-
-    if clinical["blood_pressure"]:
-        engineered["blood_pressure_high_flag"] = (engineered[clinical["blood_pressure"]] >= 80).astype(float)
-        feature_notes.append("blood_pressure_high_flag")
-
-    clinical_risk_index = np.zeros(len(engineered), dtype=float)
-    weight_total = 0.0
-
-    if clinical["glucose"]:
-        clinical_risk_index += engineered[clinical["glucose"]].fillna(engineered[clinical["glucose"]].median()).astype(float) * 0.35
-        weight_total += 0.35
-
-    if clinical["bmi"]:
-        clinical_risk_index += engineered[clinical["bmi"]].fillna(engineered[clinical["bmi"]].median()).astype(float) * 0.25
-        weight_total += 0.25
-
-    if clinical["age"]:
-        clinical_risk_index += engineered[clinical["age"]].fillna(engineered[clinical["age"]].median()).astype(float) * 0.15
-        weight_total += 0.15
-
-    if clinical["insulin"]:
-        clinical_risk_index += engineered[clinical["insulin"]].fillna(engineered[clinical["insulin"]].median()).astype(float) * 0.15
-        weight_total += 0.15
-
-    if clinical["blood_pressure"]:
-        clinical_risk_index += engineered[clinical["blood_pressure"]].fillna(engineered[clinical["blood_pressure"]].median()).astype(float) * 0.10
-        weight_total += 0.10
-
-    if weight_total > 0:
-        clinical_risk_index = clinical_risk_index / weight_total
-        engineered["clinical_risk_index"] = pd.Series(clinical_risk_index, index=engineered.index)
-        feature_notes.append("clinical_risk_index")
-
-    datetime_cols = engineered.select_dtypes(include=["datetime64[ns]", "datetime64[ns, UTC]"]).columns.tolist()
-    for column in datetime_cols:
-        engineered[f"{column}_year"] = engineered[column].dt.year
-        engineered[f"{column}_month"] = engineered[column].dt.month
-        engineered[f"{column}_dayofweek"] = engineered[column].dt.dayofweek
-        feature_notes.extend([f"{column}_year", f"{column}_month", f"{column}_dayofweek"])
-
-    return engineered, {
-        "clinical_columns": clinical,
-        "engineered_features": feature_notes,
-        "row_count": int(len(engineered)),
-        "column_count": int(engineered.shape[1]),
+    return df.copy(), {
+        "clinical_columns": {},
+        "engineered_features": [],
+        "row_count": int(len(df)),
+        "column_count": int(df.shape[1]),
     }
 
 
 def _build_surrogate_diabetes_target(df):
-    clinical = _clinical_columns(df)
-    score = np.zeros(len(df), dtype=float)
-    evidence = 0.0
+    if callable(build_surrogate_diabetes_target):
+        return build_surrogate_diabetes_target(df)
 
-    if clinical["glucose"]:
-        score += (df[clinical["glucose"]].fillna(df[clinical["glucose"]].median()).astype(float) >= 140).astype(float) * 0.45
-        score += (df[clinical["glucose"]].fillna(df[clinical["glucose"]].median()).astype(float) >= 180).astype(float) * 0.15
-        evidence += 0.60
-
-    if clinical["bmi"]:
-        score += (df[clinical["bmi"]].fillna(df[clinical["bmi"]].median()).astype(float) >= 30).astype(float) * 0.20
-        evidence += 0.20
-
-    if clinical["age"]:
-        score += (df[clinical["age"]].fillna(df[clinical["age"]].median()).astype(float) >= 50).astype(float) * 0.10
-        evidence += 0.10
-
-    if clinical["insulin"]:
-        score += (df[clinical["insulin"]].fillna(df[clinical["insulin"]].median()).astype(float) >= 150).astype(float) * 0.05
-        evidence += 0.05
-
-    if clinical["blood_pressure"]:
-        score += (df[clinical["blood_pressure"]].fillna(df[clinical["blood_pressure"]].median()).astype(float) >= 80).astype(float) * 0.05
-        evidence += 0.05
-
-    if evidence == 0:
-        numeric = df.select_dtypes(include=[np.number])
-        if numeric.empty:
-            surrogate = pd.Series([0] * len(df), index=df.index, dtype=int)
-            label_source = "fallback_constant"
-        else:
-            rolling = numeric.mean(axis=1)
-            threshold = rolling.median()
-            surrogate = (rolling >= threshold).astype(int)
-            label_source = "median_numeric_proxy"
-        return surrogate, {"target_name": "future_diabetes_likelihood", "source": label_source, "positive_rate": float(surrogate.mean())}
-
-    if score.max() == score.min():
-        surrogate = pd.Series([0] * len(df), index=df.index, dtype=int)
-    else:
-        threshold = np.nanpercentile(score, 65)
-        surrogate = (score >= threshold).astype(int)
-
-    if surrogate.nunique(dropna=True) < 2:
-        surrogate = (score >= np.nanmedian(score)).astype(int)
-
-    return surrogate.astype(int), {
+    surrogate = pd.Series([0] * len(df), index=df.index, dtype=int)
+    return surrogate, {
         "target_name": "future_diabetes_likelihood",
-        "source": "clinical_surrogate",
-        "positive_rate": float(np.mean(surrogate)),
+        "source": "fallback_constant",
+        "positive_rate": float(surrogate.mean()),
     }
 
 
@@ -721,6 +580,7 @@ def run_predictive_model(df, targets_dict=None):
     missing_after = int(working_df.isna().sum().sum())
 
     diabetes_targets = _detect_diabetes_targets(working_df)
+    diabetes_targets = _select_preferred_diabetes_target(diabetes_targets)
     modeling_frame = working_df.copy()
     target_source = "observed"
 
@@ -730,15 +590,34 @@ def run_predictive_model(df, targets_dict=None):
         target_series, target_normalization = _normalize_target_values(target_series)
         modeling_frame[target_name] = target_series.astype(int)
     else:
-        target_series, target_normalization = _build_surrogate_diabetes_target(modeling_frame)
-        target_name = target_normalization["target_name"]
-        modeling_frame[target_name] = target_series.astype(int)
-        target_source = target_normalization["source"]
-        diabetes_targets = [target_name]
+        return {
+            "predictions": {},
+            "feature_engineering": feature_engineering_summary,
+            "model_monitoring": {
+                "status": "skipped",
+                "reason": "No explicit Outcome target found",
+                "missing_before": missing_before,
+                "missing_after": missing_after,
+                "duplicate_rows_removed": duplicate_rows,
+            },
+            "risk_scoring": {},
+            "diabetes_detection": {
+                "detected_targets": [],
+                "prediction_target": None,
+                "strategy": "no_target_found",
+                "future_likelihood_supported": False,
+            },
+            "model_leaderboard": [],
+            "shap_explanations": {},
+            "diabetes_targets": [],
+            "modeling_frame": modeling_frame,
+        }
 
     modeling_frame = modeling_frame.dropna(subset=[target_name]).reset_index(drop=True)
     y = modeling_frame[target_name].astype(int)
-    X = modeling_frame.drop(columns=[target_name])
+    X = modeling_frame.drop(columns=[target_name], errors="ignore")
+    if target_name in X.columns:
+        X = X.drop(columns=[target_name], errors="ignore")
 
     if y.nunique() < 2:
         return {

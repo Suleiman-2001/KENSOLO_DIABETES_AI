@@ -23,7 +23,8 @@ def explain_predictions(model_pipeline, df: pd.DataFrame, target: str, top_n: in
         "feature_importance": [],
         "sample_explanations": [],
         "clinical_risk_drivers": [],
-        "global_interpretation": {}
+        "global_interpretation": {},
+        "future_prediction_layer": {}
     }
 
     # ----------------------------
@@ -141,5 +142,81 @@ def explain_predictions(model_pipeline, df: pd.DataFrame, target: str, top_n: in
             else "Mixed clinical and non-clinical influence detected"
         )
     }
+
+    # ----------------------------
+    # 6️⃣ FUTURE PREDICTION LAYER (SCENARIO SIMULATION)
+    # ----------------------------
+    def _get_numeric_series_by_keyword(keyword):
+        for c in X.columns:
+            if keyword in str(c).lower() and pd.api.types.is_numeric_dtype(X[c]):
+                series = pd.to_numeric(X[c], errors="coerce").dropna()
+                if not series.empty:
+                    return c, series
+        return None, None
+
+    age_col, age_series = _get_numeric_series_by_keyword("age")
+    glucose_col, glucose_series = _get_numeric_series_by_keyword("glucose")
+    bmi_col, bmi_series = _get_numeric_series_by_keyword("bmi")
+    insulin_col, insulin_series = _get_numeric_series_by_keyword("insulin")
+    bp_col, bp_series = _get_numeric_series_by_keyword("pressure")
+
+    if glucose_series is not None:
+        baseline_glucose = float(glucose_series.median())
+        baseline_age = float(age_series.median()) if age_series is not None else 50.0
+        baseline_bmi = float(bmi_series.median()) if bmi_series is not None else 28.0
+        baseline_insulin = float(insulin_series.median()) if insulin_series is not None else 90.0
+        baseline_bp = float(bp_series.median()) if bp_series is not None else 75.0
+
+        def _risk_score(sim_age, sim_glucose):
+            glucose_effect = max(0.0, (sim_glucose - 100.0) / 100.0) * 0.45
+            age_effect = max(0.0, (sim_age - 45.0) / 100.0) * 0.20
+            bmi_effect = max(0.0, (baseline_bmi - 25.0) / 100.0) * 0.20
+            insulin_effect = max(0.0, (120.0 - baseline_insulin) / 100.0) * 0.10
+            bp_effect = max(0.0, (baseline_bp - 80.0) / 100.0) * 0.05
+            score = 0.15 + glucose_effect + age_effect + bmi_effect + insulin_effect + bp_effect
+            return round(float(min(1.0, max(0.0, score))), 3)
+
+        risk_trajectory = []
+        for years_ahead in [0, 5, 10, 15]:
+            sim_age = baseline_age + years_ahead
+            risk_trajectory.append(
+                {
+                    "years_ahead": years_ahead,
+                    "projected_age": round(sim_age, 1),
+                    "simulated_risk": _risk_score(sim_age, baseline_glucose)
+                }
+            )
+
+        glucose_scenarios = [
+            ("improved_control", -15.0),
+            ("stable", 0.0),
+            ("worsening_control", 15.0),
+            ("severe_progression", 30.0)
+        ]
+
+        glucose_progression = []
+        for name, delta in glucose_scenarios:
+            sim_glucose = baseline_glucose + delta
+            glucose_progression.append(
+                {
+                    "scenario": name,
+                    "simulated_glucose": round(sim_glucose, 1),
+                    "simulated_risk": _risk_score(baseline_age, sim_glucose)
+                }
+            )
+
+        explanations["future_prediction_layer"] = {
+            "age_reference_column": age_col,
+            "glucose_reference_column": glucose_col,
+            "risk_trajectory_over_age": risk_trajectory,
+            "glucose_progression_scenarios": glucose_progression,
+            "note": "Scenario-based simulation for future work planning; not a causal forecast."
+        }
+    else:
+        explanations["future_prediction_layer"] = {
+            "risk_trajectory_over_age": [],
+            "glucose_progression_scenarios": [],
+            "note": "Future prediction layer unavailable because no numeric glucose column was detected."
+        }
 
     return explanations

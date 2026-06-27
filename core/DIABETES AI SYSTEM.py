@@ -1,52 +1,35 @@
 import os
+import sys
 import warnings
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-try:
-    from ..engines.medical_vision_engine import generate_graphs, save_predictions_and_recommendations
-    from ..engines.clinical_nlp_engine import run_nlp_analysis
-    from ..engines.predictive_engine import run_predictive_model
-    from ..engines.problem_discovery import discover_problem
-    from ..engines.self_critic import self_critic
-    from ..engines.decision_engine import run_decision_intelligence
-    from ..engines.business_engine import run_business_intelligence
-    from ..engines.business_graph_engine import generate_business_graphs
-    from ..engines.autofix_engine import apply_autofix
-    from ..engines.explanation_engine import explain_predictions
-    from ..engines.recommendation_engine import run_recommendations
-    from ..engines.adaptive_engine import run_adaptive_analytics
-    from ..engines.talk_to_data import talk_to_data_ai
+# Ensure project root is importable when this module is executed directly.
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
-    # =========================
-    # DIABETES CORE ENGINES
-    # =========================
-    from .diabetes_kpi_engine import detect_kpis  # now: clinical biomarkers engine
-    from .clinical_data_quality_engine import data_quality_score
-    from .diabetes_insight_engine import auto_insights as generate_clinical_insights
-    from .diabetes_overview_engine import dataset_overview
-except ImportError:
-    from engines.medical_vision_engine import generate_graphs, save_predictions_and_recommendations
-    from engines.clinical_nlp_engine import run_nlp_analysis
-    from engines.predictive_engine import run_predictive_model
-    from engines.problem_discovery import discover_problem
-    from engines.self_critic import self_critic
-    from engines.decision_engine import run_decision_intelligence
-    from engines.business_engine import run_business_intelligence
-    from engines.business_graph_engine import generate_business_graphs
-    from engines.autofix_engine import apply_autofix
-    from engines.explanation_engine import explain_predictions
-    from engines.recommendation_engine import run_recommendations
-    from engines.adaptive_engine import run_adaptive_analytics
-    from engines.talk_to_data import talk_to_data_ai
+from engines.medical_vision_engine import generate_graphs, save_predictions_and_recommendations
+from engines.clinical_nlp_engine import run_nlp_analysis
+from engines.predictive_engine import run_predictive_model
+from engines.problem_discovery import discover_problem
+from engines.self_critic import self_critic
+from engines.decision_engine import run_decision_intelligence
+from engines.business_engine import run_business_intelligence
+from engines.business_graph_engine import generate_business_graphs
+from engines.autofix_engine import apply_autofix
+from engines.explanation_engine import explain_predictions
+from engines.recommendation_engine import run_recommendations
+from engines.adaptive_engine import run_adaptive_analytics
+from engines.talk_to_data import talk_to_data_ai
 
-    # =========================
-    # DIABETES CORE ENGINES
-    # =========================
-    from core.diabetes_kpi_engine import detect_kpis  # now: clinical biomarkers engine
-    from core.clinical_data_quality_engine import data_quality_score
-    from core.diabetes_insight_engine import auto_insights as generate_clinical_insights
-    from core.diabetes_overview_engine import dataset_overview
+# =========================
+# DIABETES CORE ENGINES
+# =========================
+from core.diabetes_kpi_engine import detect_kpis  # now: clinical biomarkers engine
+from core.clinical_data_quality_engine import data_quality_score
+from core.diabetes_insight_engine import auto_insights as generate_clinical_insights
+from core.diabetes_overview_engine import dataset_overview
 
 warnings.filterwarnings("ignore")
 
@@ -85,22 +68,14 @@ def _coerce_dataframe_types(df):
 
 
 def _find_diabetes_classification_targets(df):
-    diabetes_candidates = []
+    return [col for col in df.columns if col.lower().strip() == "outcome"]
 
-    for col in df.columns:
-        col_lower = col.lower()
-        if any(token in col_lower for token in ["diabetes", "diabetic", "has_diabetes", "diabetes_status", "diabetes_flag", "diagnosis"]):
-            diabetes_candidates.append(col)
-            continue
 
-        if any(token in col_lower for token in ["outcome", "class", "label", "status"]):
-            values = df[col].dropna().astype(str).str.lower().unique()
-            if not values.size:
-                continue
-            if set(values.tolist()) & {"0", "1", "yes", "no", "positive", "negative", "diabetes", "diabetic", "non-diabetic", "nondiabetic", "healthy", "sick"}:
-                diabetes_candidates.append(col)
+def _select_preferred_diabetes_target(candidates):
+    if not candidates:
+        return []
 
-    return diabetes_candidates
+    return [candidates[0]]
 
 
 def process_chunk(chunk_df, column_types):
@@ -170,14 +145,15 @@ def route_to_engines(df, column_types, autofix=True, context=None, query=None):
 
     # recompute schema
     column_types = {}
-    diabetes_targets = _find_diabetes_classification_targets(working_df)
+    diabetes_target_candidates = _find_diabetes_classification_targets(working_df)
+    diabetes_targets = _select_preferred_diabetes_target(diabetes_target_candidates)
 
     for col in working_df.columns:
         if pd.api.types.is_numeric_dtype(working_df[col]):
             column_types[col] = "numerical"
         elif pd.api.types.is_datetime64_any_dtype(working_df[col]):
             column_types[col] = "datetime"
-        elif col in diabetes_targets:
+        elif col in diabetes_target_candidates:
             column_types[col] = "categorical"
         else:
             column_types[col] = "text"
@@ -312,3 +288,34 @@ def route_to_engines(df, column_types, autofix=True, context=None, query=None):
         "talk_to_data_result": talk_to_data_result,
         "saved_files": saved_files
     }
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Run the Diabetes AI System on a dataset."
+    )
+    parser.add_argument("dataset", help="Path to the input dataset file")
+    parser.add_argument("--query", help="Optional query for talk-to-data", default=None)
+    args = parser.parse_args()
+
+    if not os.path.exists(args.dataset):
+        raise FileNotFoundError(f"Dataset not found: {args.dataset}")
+
+    ext = os.path.splitext(args.dataset)[1].lower()
+    if ext == ".csv":
+        df = pd.read_csv(args.dataset)
+    elif ext == ".xlsx":
+        df = pd.read_excel(args.dataset, engine="openpyxl")
+    elif ext == ".xls":
+        df = pd.read_excel(args.dataset, engine="xlrd")
+    elif ext == ".json":
+        df = pd.read_json(args.dataset)
+    elif ext == ".parquet":
+        df = pd.read_parquet(args.dataset)
+    else:
+        raise ValueError(f"Unsupported dataset type: {ext}")
+
+    output = route_to_engines(df, {})
+    print("Output keys:", list(output.keys()))

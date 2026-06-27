@@ -112,6 +112,8 @@ def save_to_excel(output_dict, folder_path="outputs/excel_exports"):
             "risk_scoring": output_dict.get("risk_scoring", {}),
             "model_monitoring": output_dict.get("model_monitoring", {}),
             "diabetes_detection": output_dict.get("diabetes_detection", {}),
+            "task_detection": output_dict.get("task_detection", {}),
+            "unsupervised_learning": output_dict.get("unsupervised_learning", {}),
             "model_leaderboard": output_dict.get("model_leaderboard", []),
             "shap_explanations": output_dict.get("shap_explanations", {}),
         }
@@ -147,6 +149,8 @@ def save_to_excel(output_dict, folder_path="outputs/excel_exports"):
             "has_problem_discovery": bool(problems),
             "has_model_monitoring": bool(output_dict.get("model_monitoring")),
             "has_risk_scoring": bool(output_dict.get("risk_scoring")),
+            "detected_task": output_dict.get("task_detection", {}).get("task", "unknown"),
+            "has_unsupervised_learning": bool(output_dict.get("unsupervised_learning")),
         }
 
         df_summary = pd.DataFrame([summary])

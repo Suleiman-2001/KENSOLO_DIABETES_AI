@@ -11,55 +11,19 @@ from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from xgboost import XGBRegressor
 
+try:
+    from medical_plugin.diabetes_rules import clinical_risk_assessment
+except Exception:
+    def clinical_risk_assessment(_df):
+        return {
+            "glucose_risk": 0.0,
+            "bmi_risk": 0.0,
+            "age_risk": 0.0,
+            "overall_risk_level": "Low",
+            "risk_score": 0.0,
+        }
+
 warnings.filterwarnings("ignore")
-
-
-# =========================================================
-# 🧠 CLINICAL RISK ENGINE
-# =========================================================
-def _clinical_risk_assessment(df):
-    """
-    Converts dataset into diabetes risk indicators.
-    """
-
-    risk = {
-        "glucose_risk": 0.0,
-        "bmi_risk": 0.0,
-        "age_risk": 0.0,
-        "overall_risk_level": "Low",
-        "risk_score": 0.0
-    }
-
-    # Detect glucose
-    glucose_col = next((c for c in df.columns if "glucose" in c.lower()), None)
-    if glucose_col:
-        risk["glucose_risk"] = float((df[glucose_col] > 140).mean())
-
-    # Detect BMI
-    bmi_col = next((c for c in df.columns if "bmi" in c.lower()), None)
-    if bmi_col:
-        risk["bmi_risk"] = float((df[bmi_col] > 30).mean())
-
-    # Detect Age
-    age_col = next((c for c in df.columns if "age" in c.lower()), None)
-    if age_col:
-        risk["age_risk"] = float((df[age_col] > 50).mean())
-
-    # Weighted risk score
-    score = (
-        risk["glucose_risk"] * 0.5 +
-        risk["bmi_risk"] * 0.3 +
-        risk["age_risk"] * 0.2
-    )
-
-    risk["risk_score"] = float(score)
-
-    if score > 0.6:
-        risk["overall_risk_level"] = "High"
-    elif score > 0.3:
-        risk["overall_risk_level"] = "Medium"
-
-    return risk
 
 
 # =========================================================
@@ -155,7 +119,7 @@ def run_predictive_model(df, targets_dict):
             sample_preds = best_model.predict(X.head(5))
 
             # 🔬 Clinical layer
-            clinical_risk = _clinical_risk_assessment(clean_df)
+            clinical_risk = clinical_risk_assessment(clean_df)
 
             results[target] = {
                 "task": "regression",
@@ -219,7 +183,7 @@ def run_predictive_model(df, targets_dict):
 
             sample_preds = best_model.predict(X.head(5))
 
-            clinical_risk = _clinical_risk_assessment(clean_df)
+            clinical_risk = clinical_risk_assessment(clean_df)
 
             results[target] = {
                 "task": "classification",
