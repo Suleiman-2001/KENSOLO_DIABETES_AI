@@ -654,8 +654,11 @@ def display_pl_dashboard(df):
     st.divider()
     col1, col2, col3, col4 = st.columns(4)
 
+    def _first_col(col_list):
+        return col_list[0] if col_list else None
+
     # Prevalence if an outcome/target exists
-    outcome_col = diabetes_cols.get("outcome", [None])[0]
+    outcome_col = _first_col(diabetes_cols.get("outcome", []))
     if outcome_col and outcome_col in df.columns:
         prevalence = 100 * df[outcome_col].dropna().astype(float).mean()
         col1.metric("Diabetes Prevalence", f"{prevalence:.1f}%")
@@ -663,21 +666,21 @@ def display_pl_dashboard(df):
         col1.metric("Diabetes Prevalence", "N/A")
 
     # Average glucose
-    glucose_col = diabetes_cols.get("glucose", [None])[0]
+    glucose_col = _first_col(diabetes_cols.get("glucose", []))
     if glucose_col and glucose_col in df.columns:
         col2.metric("Avg Glucose", f"{df[glucose_col].dropna().mean():.1f}")
     else:
         col2.metric("Avg Glucose", "N/A")
 
     # Average BMI
-    bmi_col = diabetes_cols.get("bmi", [None])[0]
+    bmi_col = _first_col(diabetes_cols.get("bmi", []))
     if bmi_col and bmi_col in df.columns:
         col3.metric("Avg BMI", f"{df[bmi_col].dropna().mean():.1f}")
     else:
         col3.metric("Avg BMI", "N/A")
 
     # Median age
-    age_col = diabetes_cols.get("age", [None])[0]
+    age_col = _first_col(diabetes_cols.get("age", []))
     if age_col and age_col in df.columns:
         col4.metric("Median Age", f"{df[age_col].dropna().median():.0f}")
     else:
