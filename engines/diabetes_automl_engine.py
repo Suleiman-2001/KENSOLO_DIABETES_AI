@@ -131,7 +131,54 @@ def _normalize_text(value):
 
 
 def _detect_diabetes_targets(df):
-    return [col for col in df.columns if col.lower().strip() == "outcome"]
+    explicit_names = {
+        "outcome",
+        "diabetes",
+        "diabetes_outcome",
+        "target",
+        "label",
+        "class",
+        "diagnosis",
+        "has_diabetes",
+        "dm",
+    }
+
+    keyword_priority = {
+        "outcome": 0,
+        "diabetes": 1,
+        "diagnosis": 2,
+        "target": 3,
+        "label": 4,
+        "class": 5,
+    }
+
+    candidates = []
+    for col in df.columns:
+        low = str(col).lower().strip()
+        if low == "id" or low.endswith("id") or "_id" in low:
+            continue
+
+        series = df[col]
+        nunique = int(series.nunique(dropna=True))
+        if nunique < 2 or nunique > 12:
+            continue
+
+        if pd.api.types.is_datetime64_any_dtype(series):
+            continue
+
+        is_explicit = low in explicit_names
+        has_keyword = any(k in low for k in ("diabet", "outcome", "diagnos", "target", "label", "class"))
+        if not is_explicit and not has_keyword:
+            continue
+
+        score = keyword_priority.get(low, 10)
+        if has_keyword and "diabet" in low:
+            score -= 1
+        score += max(0, nunique - 2) * 0.1
+        candidates.append((score, col))
+
+    candidates.sort(key=lambda item: item[0])
+    return [col for _, col in candidates]
 
 
 def _select_preferred_diabetes_target(candidates):
@@ -155,13 +202,80 @@ def _engineer_features(df):
 
 def _build_surrogate_diabetes_target(df):
     if callable(build_surrogate_diabetes_target):
-        return build_surrogate_diabetes_target(df)
+        try:
+            surrogate, metadata = build_surrogate_diabetes_target(df)
+            surrogate_series = pd.Series(surrogate, index=df.index)
+            surrogate_binary = pd.to_numeric(surrogate_series, errors="coerce").fillna(0)
+            surrogate_binary = (surrogate_binary >= surrogate_binary.median()).astype(int)
+            if surrogate_binary.nunique() >= 2:
+                metadata = metadata or {}
+                metadata.setdefault("target_name", "future_diabetes_likelihood")
+                metadata.setdefault("source", "plugin_surrogate")
+                metadata["positive_rate"] = float(surrogate_binary.mean())
+                return surrogate_binary, metadata
+        except Exception:
+            pass
 
-    surrogate = pd.Series([0] * len(df), index=df.index, dtype=int)
-    return surrogate, {
+    feature_rules = [
+        ("glucose", ["glucose", "plasma", "fasting_glucose"], 0.30),
+        ("hba1c", ["hba1c", "a1c", "glycated"], 0.22),
+        ("bmi", ["bmi", "body_mass", "body mass"], 0.16),
+        ("age", ["age"], 0.12),
+        ("insulin", ["insulin"], 0.10),
+        ("blood_pressure", ["blood_pressure", "bp", "pressure", "hypertension"], 0.10),
+    ]
+
+    used_features = []
+    weighted_components = []
+    total_weight = 0.0
+
+    for feature_name, tokens, weight in feature_rules:
+        matched_col = None
+        for col in df.columns:
+            low = str(col).lower()
+            if any(token in low for token in tokens):
+                matched_col = col
+                break
+
+        if matched_col is None:
+            continue
+
+        numeric = pd.to_numeric(df[matched_col], errors="coerce")
+        if numeric.notna().mean() < 0.4 or numeric.nunique(dropna=True) < 3:
+            continue
+
+        rank_score = numeric.rank(pct=True).fillna(0.5)
+        weighted_components.append(rank_score * weight)
+        total_weight += weight
+        used_features.append(matched_col)
+
+    if weighted_components and total_weight > 0:
+        combined_score = sum(weighted_components) / total_weight
+    else:
+        numeric_df = df.select_dtypes(include=[np.number]).copy()
+        numeric_df = numeric_df.loc[:, numeric_df.nunique(dropna=True) >= 3]
+        if numeric_df.shape[1] >= 1:
+            ranked = numeric_df.rank(pct=True)
+            combined_score = ranked.mean(axis=1).fillna(0.5)
+            used_features = numeric_df.columns.tolist()[:5]
+        else:
+            combined_score = pd.Series(np.linspace(0.0, 1.0, num=max(1, len(df))), index=df.index)
+
+    threshold = float(combined_score.quantile(0.65)) if len(combined_score) > 0 else 0.5
+    surrogate = (combined_score >= threshold).astype(int)
+
+    if surrogate.nunique() < 2 and len(combined_score) > 0:
+        median_threshold = float(combined_score.median())
+        surrogate = (combined_score >= median_threshold).astype(int)
+
+    if surrogate.nunique() < 2:
+        surrogate = pd.Series((np.arange(len(df)) % 2).astype(int), index=df.index)
+
+    return surrogate.astype(int), {
         "target_name": "future_diabetes_likelihood",
-        "source": "fallback_constant",
+        "source": "surrogate_rule_engine",
         "positive_rate": float(surrogate.mean()),
+        "features_used": used_features,
     }
 
 
@@ -590,28 +704,16 @@ def run_predictive_model(df, targets_dict=None):
         target_series, target_normalization = _normalize_target_values(target_series)
         modeling_frame[target_name] = target_series.astype(int)
     else:
-        return {
-            "predictions": {},
-            "feature_engineering": feature_engineering_summary,
-            "model_monitoring": {
-                "status": "skipped",
-                "reason": "No explicit Outcome target found",
-                "missing_before": missing_before,
-                "missing_after": missing_after,
-                "duplicate_rows_removed": duplicate_rows,
-            },
-            "risk_scoring": {},
-            "diabetes_detection": {
-                "detected_targets": [],
-                "prediction_target": None,
-                "strategy": "no_target_found",
-                "future_likelihood_supported": False,
-            },
-            "model_leaderboard": [],
-            "shap_explanations": {},
-            "diabetes_targets": [],
-            "modeling_frame": modeling_frame,
+        surrogate_target, surrogate_meta = _build_surrogate_diabetes_target(modeling_frame)
+        target_name = str((surrogate_meta or {}).get("target_name", "future_diabetes_likelihood"))
+        target_source = str((surrogate_meta or {}).get("source", "surrogate_rule_engine"))
+        target_normalization = {
+            "strategy": "surrogate_target",
+            "positive_rate": float((surrogate_meta or {}).get("positive_rate", 0.0)),
+            "features_used": (surrogate_meta or {}).get("features_used", []),
         }
+        modeling_frame[target_name] = pd.to_numeric(pd.Series(surrogate_target, index=modeling_frame.index), errors="coerce").fillna(0).astype(int)
+        diabetes_targets = [target_name]
 
     modeling_frame = modeling_frame.dropna(subset=[target_name]).reset_index(drop=True)
     y = modeling_frame[target_name].astype(int)

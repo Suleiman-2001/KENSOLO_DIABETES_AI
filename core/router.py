@@ -518,24 +518,38 @@ def route_to_engines(df, column_types, autofix=True, context=None, query=None):
     unsupervised_learning = {}
 
     if detected_target is None:
-        print("⚙ No target detected. Running unsupervised fallback mode...")
-        unsupervised_learning = run_unsupervised_learning(working_df)
-        feature_engineering = {}
-        model_monitoring = {
-            "status": "completed",
-            "task": "unsupervised",
-            "engine": "unsupervised_engine",
-            "reason": "No target detected; fallback mode activated",
-        }
-        risk_scoring = {}
-        diabetes_detection = {
-            "detected_targets": [],
-            "prediction_target": None,
-            "strategy": "unsupervised_fallback",
-            "future_likelihood_supported": False,
-            "detected_task": detected_task,
-        }
-        model_leaderboard = []
+        print("⚙ No explicit target detected. Attempting diabetes surrogate modeling...")
+        advanced_ai = run_advanced_predictive_ai(
+            working_df,
+            diabetes_targets
+        )
+
+        aggregated_predictions = advanced_ai.get("predictions", {})
+        feature_engineering = advanced_ai.get("feature_engineering", {})
+        model_monitoring = advanced_ai.get("model_monitoring", {})
+        risk_scoring = advanced_ai.get("risk_scoring", {})
+        diabetes_detection = advanced_ai.get("diabetes_detection", {})
+        model_leaderboard = advanced_ai.get("model_leaderboard", [])
+
+        if not aggregated_predictions:
+            print("⚙ Surrogate modeling unavailable. Running unsupervised fallback mode...")
+            unsupervised_learning = run_unsupervised_learning(working_df)
+            feature_engineering = {}
+            model_monitoring = {
+                "status": "completed",
+                "task": "unsupervised",
+                "engine": "unsupervised_engine",
+                "reason": "No target detected; fallback mode activated",
+            }
+            risk_scoring = {}
+            diabetes_detection = {
+                "detected_targets": [],
+                "prediction_target": None,
+                "strategy": "unsupervised_fallback",
+                "future_likelihood_supported": False,
+                "detected_task": detected_task,
+            }
+            model_leaderboard = []
 
     elif detected_task == "classification" and diabetes_targets:
         advanced_ai = run_advanced_predictive_ai(

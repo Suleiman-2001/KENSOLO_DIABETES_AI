@@ -653,17 +653,47 @@ def display_pl_dashboard(df):
     # Build simple KPIs
     st.divider()
     col1, col2, col3, col4 = st.columns(4)
+    output = st.session_state.get("output") or {}
+    risk_scoring = output.get("risk_scoring", {}) if isinstance(output, dict) else {}
 
     def _first_col(col_list):
         return col_list[0] if col_list else None
 
+    def _to_percent(value):
+        try:
+            val = float(value)
+            return val * 100.0 if val <= 1.0 else val
+        except Exception:
+            return None
+
     # Prevalence if an outcome/target exists
     outcome_col = _first_col(diabetes_cols.get("outcome", []))
+    prevalence_proxy = None
+
+    if isinstance(risk_scoring, dict):
+        if risk_scoring.get("high_risk_share") is not None:
+            prevalence_proxy = _to_percent(risk_scoring.get("high_risk_share"))
+        elif risk_scoring.get("mean_risk_score") is not None:
+            prevalence_proxy = _to_percent(risk_scoring.get("mean_risk_score"))
+        elif risk_scoring.get("average_risk") is not None:
+            prevalence_proxy = _to_percent(risk_scoring.get("average_risk"))
+
     if outcome_col and outcome_col in df.columns:
-        prevalence = 100 * df[outcome_col].dropna().astype(float).mean()
-        col1.metric("Diabetes Prevalence", f"{prevalence:.1f}%")
+        try:
+            prevalence = 100 * pd.to_numeric(df[outcome_col], errors="coerce").dropna().mean()
+            col1.metric("Diabetes Prevalence", f"{prevalence:.1f}%")
+        except Exception:
+            if prevalence_proxy is not None:
+                col1.metric("Diabetes Prevalence", f"{prevalence_proxy:.1f}%")
+                col1.caption("Proxy estimate from AI risk scoring")
+            else:
+                col1.metric("Diabetes Prevalence", "N/A")
     else:
-        col1.metric("Diabetes Prevalence", "N/A")
+        if prevalence_proxy is not None:
+            col1.metric("Diabetes Prevalence", f"{prevalence_proxy:.1f}%")
+            col1.caption("Proxy estimate from AI risk scoring")
+        else:
+            col1.metric("Diabetes Prevalence", "N/A")
 
     # Average glucose
     glucose_col = _first_col(diabetes_cols.get("glucose", []))
