@@ -148,8 +148,7 @@ def run_recommendations(predictions, parallel_threshold=10, max_jobs=2, max_flag
             recs = [{
                 "prediction": p,
                 "risk_level": "Error",
-                "recommendstion
-                ation": f"Processing failure: {str(e)}"
+                "recommendation": f"Processing failure: {str(e)}"
             } for p in sample_preds]
 
         recommendations[target] = recs
