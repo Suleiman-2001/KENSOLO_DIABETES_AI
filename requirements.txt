@@ -4,7 +4,7 @@ pandas
 numpy
 scikit-learn
 scipy
-shap
+shap>=0.46.0
 lime
 joblib
 pymongo
