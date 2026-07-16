@@ -3,6 +3,110 @@ import os
 import json
 
 
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def _prediction_rows(predictions_dict):
+    rows = []
+
+    for target, pred_data in (predictions_dict or {}).items():
+        if isinstance(pred_data, dict):
+            sample_predictions = pred_data.get("sample_predictions")
+            sample_probabilities = pred_data.get("sample_probabilities") or []
+            sample_risk_scores = pred_data.get("sample_risk_scores") or []
+
+            if isinstance(sample_predictions, list) and sample_predictions:
+                for index, prediction in enumerate(sample_predictions):
+                    row = {
+                        "target": target,
+                        "prediction_value": prediction,
+                    }
+                    if index < len(sample_probabilities):
+                        row["probability"] = sample_probabilities[index]
+                    if index < len(sample_risk_scores):
+                        row["risk_score"] = sample_risk_scores[index]
+                    rows.append(row)
+            else:
+                row = {str(key): _json_safe(value) for key, value in pred_data.items()}
+                row["target"] = target
+                rows.append(row)
+
+        elif isinstance(pred_data, list):
+            for item in pred_data:
+                row = item.copy() if isinstance(item, dict) else {"prediction_value": item}
+                row["target"] = target
+                rows.append(row)
+
+        else:
+            rows.append({"target": target, "prediction_value": pred_data})
+
+    return rows
+
+
+def _prediction_summary_rows(predictions_dict):
+    summary_rows = []
+
+    for target, pred_data in (predictions_dict or {}).items():
+        if not isinstance(pred_data, dict):
+            summary_rows.append({"target": target, "prediction_value": _json_safe(pred_data)})
+            continue
+
+        summary_rows.append(
+            {
+                "target": target,
+                "task": pred_data.get("task"),
+                "target_source": pred_data.get("target_source"),
+                "best_model": pred_data.get("best_model"),
+                "confidence": pred_data.get("confidence"),
+                "cv_primary_metric": pred_data.get("cv_primary_metric"),
+                "cv_primary_score": pred_data.get("cv_primary_score"),
+                "accuracy": pred_data.get("accuracy"),
+                "balanced_accuracy": pred_data.get("balanced_accuracy"),
+                "f1_score": pred_data.get("f1_score"),
+                "precision": pred_data.get("precision"),
+                "recall": pred_data.get("recall"),
+                "roc_auc": pred_data.get("roc_auc"),
+            }
+        )
+
+    return summary_rows
+
+
+def _prediction_sample_rows(predictions_dict):
+    rows = []
+
+    for target, pred_data in (predictions_dict or {}).items():
+        if not isinstance(pred_data, dict):
+            continue
+
+        sample_predictions = pred_data.get("sample_predictions") or []
+        sample_probabilities = pred_data.get("sample_probabilities") or []
+        sample_risk_scores = pred_data.get("sample_risk_scores") or []
+
+        for index, prediction in enumerate(sample_predictions):
+            row = {
+                "target": target,
+                "sample_index": index,
+                "prediction_value": prediction,
+            }
+            if index < len(sample_probabilities):
+                row["probability"] = sample_probabilities[index]
+            if index < len(sample_risk_scores):
+                row["risk_score"] = sample_risk_scores[index]
+            rows.append(row)
+
+    return rows
+
+
 def save_to_excel(output_dict, folder_path="outputs/excel_exports"):
     """
     Diabetes AI Export Engine (Clinical + ML Output Formatter)
@@ -36,38 +140,42 @@ def save_to_excel(output_dict, folder_path="outputs/excel_exports"):
         predictions = output_dict.get("predictions", {})
         recommendations = output_dict.get("recommendations", {})
 
-        for target, pred_data in predictions.items():
+        summary_rows = _prediction_summary_rows(predictions)
+        if summary_rows:
+            df_pred_summary = pd.DataFrame(summary_rows)
+            df_pred_summary.to_excel(writer, sheet_name="Pred_Summary", index=False)
 
-            if not isinstance(pred_data, dict):
+        sample_rows = _prediction_sample_rows(predictions)
+        if sample_rows:
+            df_pred_samples = pd.DataFrame(sample_rows)
+            df_pred_samples.to_excel(writer, sheet_name="Pred_Samples", index=False)
+
+        for target, pred_data in predictions.items():
+            recs_list = recommendations.get(target, [])
+            if not (isinstance(pred_data, dict) and isinstance(pred_data.get("sample_predictions"), list)):
                 continue
 
-            preds = pred_data.get("sample_predictions", [])
+            target_rows = []
+            sample_predictions = pred_data.get("sample_predictions") or []
+            sample_probabilities = pred_data.get("sample_probabilities") or []
+            sample_risk_scores = pred_data.get("sample_risk_scores") or []
 
-            recs_list = recommendations.get(target, [])
+            for index, prediction in enumerate(sample_predictions):
+                rec = recs_list[index] if index < len(recs_list) else {}
+                row = {
+                    "prediction_value": prediction,
+                    "sample_index": index,
+                    "risk_category": rec.get("category", "N/A") if isinstance(rec, dict) else "N/A",
+                    "clinical_recommendation": rec.get("recommendation", "N/A") if isinstance(rec, dict) else "N/A",
+                }
+                if index < len(sample_probabilities):
+                    row["probability"] = sample_probabilities[index]
+                if index < len(sample_risk_scores):
+                    row["risk_score"] = sample_risk_scores[index]
+                target_rows.append(row)
 
-            rows = []
-
-            for i, pred in enumerate(preds):
-
-                rec = recs_list[i] if i < len(recs_list) else {}
-
-                if isinstance(rec, dict):
-                    category = rec.get("category", "N/A")
-                    recommendation = rec.get("recommendation", "N/A")
-                else:
-                    category = "N/A"
-                    recommendation = "N/A"
-
-                rows.append({
-                    "prediction_value": pred,
-                    "risk_category": category,
-                    "clinical_recommendation": recommendation
-                })
-
-            df_pred = pd.DataFrame(rows)
-
-            sheet_name = f"Pred_{target}"[:31]
-            df_pred.to_excel(writer, sheet_name=sheet_name, index=False)
+            if target_rows:
+                pd.DataFrame(target_rows).to_excel(writer, sheet_name=f"Pred_{target}"[:31], index=False)
 
         # ============================
         # 3️⃣ FULL RECOMMENDATIONS
@@ -127,7 +235,7 @@ def save_to_excel(output_dict, folder_path="outputs/excel_exports"):
                     if any(isinstance(v, (dict, list)) for v in value.values()):
                         df_extra = pd.json_normalize(value, sep="_")
                     else:
-                        df_extra = pd.DataFrame([value])
+                        df_extra = pd.DataFrame([_json_safe(value)])
                 elif isinstance(value, list):
                     df_extra = pd.json_normalize(value) if value and isinstance(value[0], dict) else pd.DataFrame({"value": value})
                 else:

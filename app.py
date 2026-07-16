@@ -42,6 +42,57 @@ def save_outputs(output):
 
     os.makedirs("outputs", exist_ok=True)
 
+    def _prediction_summary_rows(predictions_dict):
+        summary_rows = []
+        for target, pred_data in (predictions_dict or {}).items():
+            if not isinstance(pred_data, dict):
+                summary_rows.append({"target": target, "prediction_value": _json_safe(pred_data)})
+                continue
+
+            summary_rows.append(
+                {
+                    "target": target,
+                    "task": pred_data.get("task"),
+                    "target_source": pred_data.get("target_source"),
+                    "best_model": pred_data.get("best_model"),
+                    "confidence": pred_data.get("confidence"),
+                    "cv_primary_metric": pred_data.get("cv_primary_metric"),
+                    "cv_primary_score": pred_data.get("cv_primary_score"),
+                    "accuracy": pred_data.get("accuracy"),
+                    "balanced_accuracy": pred_data.get("balanced_accuracy"),
+                    "f1_score": pred_data.get("f1_score"),
+                    "precision": pred_data.get("precision"),
+                    "recall": pred_data.get("recall"),
+                    "roc_auc": pred_data.get("roc_auc"),
+                }
+            )
+        return summary_rows
+
+    def _prediction_sample_rows(predictions_dict):
+        rows = []
+
+        for target, pred_data in (predictions_dict or {}).items():
+            if not isinstance(pred_data, dict):
+                continue
+
+            sample_predictions = pred_data.get("sample_predictions") or []
+            sample_probabilities = pred_data.get("sample_probabilities") or []
+            sample_risk_scores = pred_data.get("sample_risk_scores") or []
+
+            for index, prediction in enumerate(sample_predictions):
+                row = {
+                    "target": target,
+                    "sample_index": index,
+                    "prediction_value": prediction,
+                }
+                if index < len(sample_probabilities):
+                    row["probability"] = sample_probabilities[index]
+                if index < len(sample_risk_scores):
+                    row["risk_score"] = sample_risk_scores[index]
+                rows.append(row)
+
+        return rows
+
     # Predictions JSON
     with open("outputs/predictions.json", "w") as f:
         json.dump(_json_safe(output.get("predictions", {})), f, indent=4)
@@ -50,14 +101,11 @@ def save_outputs(output):
     with open("outputs/recommendations.json", "w") as f:
         json.dump(_json_safe(output.get("recommendations", {})), f, indent=4)
 
-    # Predictions CSV
-    pred_rows = []
-    for target, items in output.get("predictions", {}).items():
-        for item in items:
-            row = item.copy() if isinstance(item, dict) else {"value": item}
-            row["target"] = target
-            pred_rows.append(row)
-    pd.DataFrame(pred_rows).to_csv("outputs/predictions.csv", index=False)
+    predictions = output.get("predictions", {})
+
+    # Predictions CSVs
+    pd.DataFrame(_prediction_summary_rows(predictions)).to_csv("outputs/predictions.csv", index=False)
+    pd.DataFrame(_prediction_sample_rows(predictions)).to_csv("outputs/predictions_samples.csv", index=False)
 
     # Recommendations CSV
     rec_rows = []
@@ -172,7 +220,8 @@ def display_generated_files():
 
     output_folder = "outputs"
     files = {
-        "Predictions CSV": os.path.join(output_folder, "predictions.csv"),
+        "Prediction Summary CSV": os.path.join(output_folder, "predictions.csv"),
+        "Prediction Samples CSV": os.path.join(output_folder, "predictions_samples.csv"),
         "Recommendations CSV": os.path.join(output_folder, "recommendations.csv"),
         "Recommendations JSON": os.path.join(output_folder, "recommendations.json"),
         "Report PDF": os.path.join(output_folder, "report.pdf")
