@@ -197,6 +197,57 @@ def save_outputs(output):
 
         return lines
 
+    def _derive_diabetes_status(result_output):
+        risk_scoring = result_output.get("risk_scoring", {}) if isinstance(result_output, dict) else {}
+        predictions = result_output.get("predictions", {}) if isinstance(result_output, dict) else {}
+
+        mean_risk = risk_scoring.get("mean_risk_score", risk_scoring.get("average_risk"))
+        if mean_risk is None:
+            mean_risk = risk_scoring.get("high_risk_share")
+            if isinstance(mean_risk, (int, float)):
+                mean_risk = float(mean_risk) * 100.0
+
+        high_risk_share = risk_scoring.get("high_risk_share")
+        if isinstance(high_risk_share, (int, float)) and high_risk_share <= 1:
+            high_risk_share_pct = float(high_risk_share) * 100.0
+        elif isinstance(high_risk_share, (int, float)):
+            high_risk_share_pct = float(high_risk_share)
+        else:
+            high_risk_share_pct = None
+
+        detected_yes = None
+        for _target, info in (predictions or {}).items():
+            if isinstance(info, dict):
+                preds = info.get("sample_predictions") or []
+                if preds:
+                    positive_count = sum(1 for value in preds if str(value).strip().lower() in {"1", "true", "yes", "diabetes", "positive"})
+                    detected_yes = positive_count > 0
+                    break
+
+        if isinstance(mean_risk, (int, float)):
+            if mean_risk >= 70:
+                chance_label = "High"
+            elif mean_risk >= 35:
+                chance_label = "Moderate"
+            else:
+                chance_label = "Low"
+        else:
+            chance_label = "Unknown"
+
+        if detected_yes is True:
+            detected_label = "Diabetes indicators found"
+        elif detected_yes is False:
+            detected_label = "No diabetes indicators found in prediction samples"
+        else:
+            detected_label = "Not enough signal to confirm diabetes detection"
+
+        return {
+            "detected_label": detected_label,
+            "chance_label": chance_label,
+            "mean_risk": mean_risk,
+            "high_risk_share_pct": high_risk_share_pct,
+        }
+
     # Predictions JSON
     with open("outputs/predictions.json", "w") as f:
         json.dump(_json_safe(output.get("predictions", {})), f, indent=4)
@@ -207,6 +258,7 @@ def save_outputs(output):
 
     predictions = output.get("predictions", {})
     explanations = output.get("explanations", {})
+    diabetes_status = _derive_diabetes_status(output)
 
     # Predictions CSVs
     pd.DataFrame(_prediction_summary_rows(predictions)).to_csv("outputs/predictions.csv", index=False)
@@ -235,6 +287,12 @@ def save_outputs(output):
         _pdf_add_bullet(pdf, f"Recommendations generated: {recommendation_count}")
         _pdf_add_bullet(pdf, f"Selected model: {output.get('model_monitoring', {}).get('training', {}).get('best_model', output.get('model_monitoring', {}).get('selected_model', 'N/A'))}")
         _pdf_add_bullet(pdf, f"Risk score (mean/avg): {output.get('risk_scoring', {}).get('mean_risk_score', output.get('risk_scoring', {}).get('average_risk', 'N/A'))}")
+        _pdf_add_bullet(pdf, f"Diabetes detection status: {diabetes_status.get('detected_label')}")
+        _pdf_add_bullet(pdf, f"Chance of getting diabetes: {diabetes_status.get('chance_label')}")
+        if diabetes_status.get("mean_risk") is not None:
+            _pdf_add_bullet(pdf, f"Mean risk score: {diabetes_status.get('mean_risk')}")
+        if diabetes_status.get("high_risk_share_pct") is not None:
+            _pdf_add_bullet(pdf, f"High risk share: {round(float(diabetes_status.get('high_risk_share_pct')), 2)}%")
 
         _pdf_add_section_title(pdf, "Predictions (Point Form)")
         for line in _build_prediction_bullets(predictions):
@@ -791,6 +849,62 @@ def display_explainability_detailed(explanations):
                 st.warning(f"SHAP note: {payload.get('shap_error')}")
             if payload.get("lime_error"):
                 st.warning(f"LIME note: {payload.get('lime_error')}")
+
+
+def derive_diabetes_status(output):
+    risk_scoring = output.get("risk_scoring", {}) if isinstance(output, dict) else {}
+    predictions = output.get("predictions", {}) if isinstance(output, dict) else {}
+
+    mean_risk = risk_scoring.get("mean_risk_score", risk_scoring.get("average_risk"))
+    if mean_risk is None:
+        mean_risk = risk_scoring.get("high_risk_share")
+        if isinstance(mean_risk, (int, float)):
+            mean_risk = float(mean_risk) * 100.0
+
+    high_risk_share = risk_scoring.get("high_risk_share")
+    if isinstance(high_risk_share, (int, float)) and high_risk_share <= 1:
+        high_risk_share_pct = float(high_risk_share) * 100.0
+    elif isinstance(high_risk_share, (int, float)):
+        high_risk_share_pct = float(high_risk_share)
+    else:
+        high_risk_share_pct = None
+
+    detected_yes = None
+    for _target, info in (predictions or {}).items():
+        if isinstance(info, dict):
+            preds = info.get("sample_predictions") or []
+            if preds:
+                positive_count = sum(1 for value in preds if str(value).strip().lower() in {"1", "true", "yes", "diabetes", "positive"})
+                detected_yes = positive_count > 0
+                break
+
+    if isinstance(mean_risk, (int, float)):
+        if mean_risk >= 70:
+            chance_label = "High"
+        elif mean_risk >= 35:
+            chance_label = "Moderate"
+        else:
+            chance_label = "Low"
+    else:
+        chance_label = "Unknown"
+
+    if detected_yes is True:
+        detected_label = "Diabetes indicators found"
+        severity = "high" if chance_label == "High" else "medium"
+    elif detected_yes is False:
+        detected_label = "No diabetes indicators found in prediction samples"
+        severity = "low"
+    else:
+        detected_label = "Not enough signal to confirm diabetes detection"
+        severity = "medium"
+
+    return {
+        "detected_label": detected_label,
+        "chance_label": chance_label,
+        "mean_risk": mean_risk,
+        "high_risk_share_pct": high_risk_share_pct,
+        "severity": severity,
+    }
 
 # ----------------------------
 # KPI Cards Dashboard
@@ -2048,6 +2162,31 @@ if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
     st.markdown(f"**Selected model:** {output.get('model_monitoring', {}).get('training', {}).get('best_model', output.get('model_monitoring', {}).get('selected_model', 'N/A'))}")
     st.markdown(f"**Average risk score:** {output.get('risk_scoring', {}).get('mean_risk_score', output.get('risk_scoring', {}).get('average_risk', 'N/A'))}")
     st.markdown(f"**Target mode:** {output.get('diabetes_detection', {}).get('strategy', 'N/A')}")
+
+    diabetes_status = derive_diabetes_status(output)
+    status_color = {
+        "high": "#ef4444",
+        "medium": "#f59e0b",
+        "low": "#10b981",
+    }.get(diabetes_status.get("severity"), "#2563eb")
+    status_sub = []
+    if diabetes_status.get("mean_risk") is not None:
+        status_sub.append(f"Mean risk score: {round(float(diabetes_status.get('mean_risk')), 2)}")
+    if diabetes_status.get("high_risk_share_pct") is not None:
+        status_sub.append(f"High risk share: {round(float(diabetes_status.get('high_risk_share_pct')), 2)}%")
+    status_sub_text = " | ".join(status_sub) if status_sub else "Risk details unavailable"
+
+    st.markdown(
+        f"""
+        <div style='border-radius:12px;padding:14px;border:1px solid {status_color};background:#ffffff;'>
+            <div style='font-weight:700;color:{status_color};'>Diabetes Status</div>
+            <div style='font-size:16px;font-weight:600;margin-top:4px;'>{diabetes_status.get('detected_label')}</div>
+            <div style='margin-top:4px;'>Chance of getting diabetes: <strong>{diabetes_status.get('chance_label')}</strong></div>
+            <div style='margin-top:4px;color:#6b7280;font-size:13px;'>{status_sub_text}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     auto_ai_answer = output.get("auto_ai_answer") if isinstance(output, dict) else None
     if isinstance(auto_ai_answer, dict) and auto_ai_answer.get("answer"):
