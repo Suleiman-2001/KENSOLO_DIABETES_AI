@@ -709,6 +709,12 @@ def route_to_engines(df, column_types, autofix=True, context=None, query=None):
     if query:
         talk_to_data_result = talk_to_data_ai(working_df, query)
 
+    auto_ai_answer = None
+    try:
+        auto_ai_answer = talk_to_data_ai(working_df, "auto summary")
+    except Exception:
+        auto_ai_answer = None
+
     # ----------------------------
     # OUTPUT EXPORTS
     # ----------------------------
@@ -802,6 +808,7 @@ def route_to_engines(df, column_types, autofix=True, context=None, query=None):
         "decisions": decision_intelligence,
         "adaptive_insights": adaptive_insights,
         "talk_to_data_result": talk_to_data_result,
+        "auto_ai_answer": auto_ai_answer,
         "saved_files": saved_files,
         "graph_folder": GRAPH_FOLDER,
         "report_path": report_path,

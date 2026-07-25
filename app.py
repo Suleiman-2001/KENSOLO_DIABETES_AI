@@ -93,6 +93,110 @@ def save_outputs(output):
 
         return rows
 
+    def _pdf_safe(text):
+        return str(text).encode("latin-1", errors="ignore").decode("latin-1")
+
+    def _pdf_add_section_title(pdf_obj, title):
+        pdf_obj.set_font("Arial", "B", 13)
+        pdf_obj.ln(4)
+        pdf_obj.cell(0, 8, _pdf_safe(title), ln=True)
+
+    def _pdf_add_bullet(pdf_obj, text):
+        pdf_obj.set_font("Arial", "", 11)
+        pdf_obj.multi_cell(0, 6, _pdf_safe(f"- {text}"))
+
+    def _build_prediction_bullets(predictions_dict):
+        lines = []
+        for target, info in (predictions_dict or {}).items():
+            if not isinstance(info, dict):
+                lines.append(f"Target {target}: prediction={info}")
+                continue
+
+            if info.get("error"):
+                lines.append(f"Target {target}: error={info.get('error')}")
+                continue
+
+            lines.append(
+                f"Target {target}: model={info.get('best_model', 'N/A')}, task={info.get('task', 'N/A')}, "
+                f"confidence={info.get('confidence', 'N/A')}"
+            )
+
+            for metric_key in ["accuracy", "balanced_accuracy", "f1_score", "precision", "recall", "roc_auc", "r2_score"]:
+                metric_val = info.get(metric_key)
+                if metric_val is not None:
+                    lines.append(f"  {metric_key}: {metric_val}")
+
+            sample_preds = info.get("sample_predictions") or []
+            if sample_preds:
+                joined = ", ".join(str(v) for v in sample_preds[:5])
+                lines.append(f"  sample_predictions: {joined}")
+
+        return lines
+
+    def _build_recommendation_bullets(recommendations_dict):
+        lines = []
+        for target, rec_list in (recommendations_dict or {}).items():
+            if not isinstance(rec_list, list) or not rec_list:
+                lines.append(f"Target {target}: no recommendations")
+                continue
+
+            lines.append(f"Target {target} recommendations:")
+            for idx, rec in enumerate(rec_list, start=1):
+                if isinstance(rec, dict):
+                    text = rec.get("recommendation") or rec.get("text") or rec.get("action") or str(rec)
+                    lines.append(f"  {idx}. {text}")
+                else:
+                    lines.append(f"  {idx}. {rec}")
+
+        return lines
+
+    def _build_explainability_bullets(explanations_dict):
+        lines = []
+        for target, payload in (explanations_dict or {}).items():
+            if not isinstance(payload, dict):
+                lines.append(f"Target {target}: explainability payload unavailable")
+                continue
+
+            methods = payload.get("explainability_methods", {}) or {}
+            shap_status = "enabled" if methods.get("shap") else "unavailable"
+            lime_status = "enabled" if methods.get("lime") else "unavailable"
+            lines.append(f"Target {target}: SHAP={shap_status}, LIME={lime_status}")
+
+            if payload.get("error"):
+                lines.append(f"  explainability_error: {payload.get('error')}")
+
+            feature_importance = payload.get("feature_importance") or []
+            if isinstance(feature_importance, list) and feature_importance:
+                lines.append("  top_feature_drivers:")
+                for idx, item in enumerate(feature_importance[:5], start=1):
+                    if isinstance(item, dict):
+                        feature_name = item.get("feature", f"feature_{idx}")
+                        score = item.get("mean_abs_shap", item.get("importance", "N/A"))
+                        lines.append(f"    {idx}. {feature_name}: {score}")
+
+            sample_explanations = payload.get("sample_explanations") or []
+            if isinstance(sample_explanations, list) and sample_explanations:
+                lines.append(f"  sample_explanations_count: {len(sample_explanations)}")
+
+                first_sample = sample_explanations[0] if sample_explanations else {}
+                contributions = first_sample.get("feature_contributions") if isinstance(first_sample, dict) else None
+                if isinstance(contributions, dict) and contributions:
+                    ranked = sorted(
+                        contributions.items(),
+                        key=lambda item: abs(float(item[1])) if str(item[1]).replace(".", "", 1).replace("-", "", 1).isdigit() else 0,
+                        reverse=True,
+                    )[:3]
+                    lines.append("  top_local_contributions_row_0:")
+                    for idx, (feature_name, value) in enumerate(ranked, start=1):
+                        lines.append(f"    {idx}. {feature_name}: {value}")
+
+            if payload.get("shap_error"):
+                lines.append(f"  shap_note: {payload.get('shap_error')}")
+            if payload.get("lime_error"):
+                lines.append(f"  lime_note: {payload.get('lime_error')}")
+
+        return lines
+
     # Predictions JSON
     with open("outputs/predictions.json", "w") as f:
         json.dump(_json_safe(output.get("predictions", {})), f, indent=4)
@@ -102,6 +206,7 @@ def save_outputs(output):
         json.dump(_json_safe(output.get("recommendations", {})), f, indent=4)
 
     predictions = output.get("predictions", {})
+    explanations = output.get("explanations", {})
 
     # Predictions CSVs
     pd.DataFrame(_prediction_summary_rows(predictions)).to_csv("outputs/predictions.csv", index=False)
@@ -120,8 +225,29 @@ def save_outputs(output):
     try:
         pdf = FPDF()
         pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
         pdf.set_font("Arial", "B", 16)
         pdf.cell(0, 10, "KENSOLO AI Report", ln=True, align="C")
+
+        _pdf_add_section_title(pdf, "Analysis Snapshot")
+        _pdf_add_bullet(pdf, f"Prediction models: {len(predictions or {})}")
+        recommendation_count = sum(len(v) for v in output.get("recommendations", {}).values()) if isinstance(output.get("recommendations"), dict) else 0
+        _pdf_add_bullet(pdf, f"Recommendations generated: {recommendation_count}")
+        _pdf_add_bullet(pdf, f"Selected model: {output.get('model_monitoring', {}).get('training', {}).get('best_model', output.get('model_monitoring', {}).get('selected_model', 'N/A'))}")
+        _pdf_add_bullet(pdf, f"Risk score (mean/avg): {output.get('risk_scoring', {}).get('mean_risk_score', output.get('risk_scoring', {}).get('average_risk', 'N/A'))}")
+
+        _pdf_add_section_title(pdf, "Predictions (Point Form)")
+        for line in _build_prediction_bullets(predictions):
+            _pdf_add_bullet(pdf, line)
+
+        _pdf_add_section_title(pdf, "Recommendations (Point Form)")
+        for line in _build_recommendation_bullets(output.get("recommendations", {})):
+            _pdf_add_bullet(pdf, line)
+
+        _pdf_add_section_title(pdf, "Explainability Summary")
+        for line in _build_explainability_bullets(explanations):
+            _pdf_add_bullet(pdf, line)
+
         pdf.output("outputs/report.pdf")
     except Exception as e:
         st.warning(f"PDF report generation failed: {e}")
@@ -442,6 +568,229 @@ def pretty_display(data, max_rows=10):
 
     # fallback
     st.write(data)
+
+
+def _format_metric_value(value):
+    if isinstance(value, float):
+        return f"{value:.4f}"
+    return str(value)
+
+
+def display_predictions_point_form(predictions):
+    if not isinstance(predictions, dict) or not predictions:
+        st.info("No predictions available.")
+        return
+
+    for target, info in predictions.items():
+        st.markdown(f"### Target: {target}")
+
+        if not isinstance(info, dict):
+            st.markdown(f"- Prediction: {_format_metric_value(info)}")
+            st.divider()
+            continue
+
+        if info.get("error"):
+            st.error(f"Prediction error: {info.get('error')}")
+            st.divider()
+            continue
+
+        st.markdown(f"- Task: {info.get('task', 'N/A')}")
+        st.markdown(f"- Best model: {info.get('best_model', 'N/A')}")
+
+        if info.get("confidence") is not None:
+            st.markdown(f"- Confidence: {_format_metric_value(info.get('confidence'))}")
+
+        score_fields = [
+            ("Accuracy", "accuracy"),
+            ("Balanced accuracy", "balanced_accuracy"),
+            ("F1 score", "f1_score"),
+            ("Precision", "precision"),
+            ("Recall", "recall"),
+            ("ROC AUC", "roc_auc"),
+            ("R2 score", "r2_score"),
+            ("CV primary score", "cv_primary_score"),
+        ]
+
+        available_scores = [
+            f"{label}: {_format_metric_value(info.get(key))}"
+            for label, key in score_fields
+            if info.get(key) is not None
+        ]
+        if available_scores:
+            st.markdown("- Performance metrics:")
+            for metric_line in available_scores:
+                st.markdown(f"  - {metric_line}")
+
+        sample_predictions = info.get("sample_predictions") or []
+        sample_probabilities = info.get("sample_probabilities") or []
+        sample_risk_scores = info.get("sample_risk_scores") or []
+
+        if sample_predictions:
+            st.markdown("- Sample predictions:")
+            for index, prediction in enumerate(sample_predictions[:5]):
+                point = f"{index + 1}. prediction={_format_metric_value(prediction)}"
+                if index < len(sample_probabilities):
+                    point += f", probability={_format_metric_value(sample_probabilities[index])}"
+                if index < len(sample_risk_scores):
+                    point += f", risk_score={_format_metric_value(sample_risk_scores[index])}"
+                st.markdown(f"  - {point}")
+
+        risk_summary = info.get("risk_score_summary") or {}
+        if isinstance(risk_summary, dict) and risk_summary:
+            st.markdown("- Risk summary:")
+            risk_lines = [
+                ("Mean risk", risk_summary.get("mean_risk_score", risk_summary.get("average_risk"))),
+                ("High risk count", risk_summary.get("high_risk_count")),
+                ("Moderate risk count", risk_summary.get("moderate_risk_count")),
+                ("Low risk count", risk_summary.get("low_risk_count")),
+            ]
+            for label, value in risk_lines:
+                if value is not None:
+                    st.markdown(f"  - {label}: {_format_metric_value(value)}")
+
+        st.divider()
+
+
+def display_recommendations_point_form(recommendations):
+    if not isinstance(recommendations, dict) or not recommendations:
+        st.warning("No recommendations were generated.")
+        return
+
+    for target, rec_list in recommendations.items():
+        st.markdown(f"### Recommendations for {target}")
+
+        if not isinstance(rec_list, list) or not rec_list:
+            st.info("No recommendation items for this target.")
+            st.divider()
+            continue
+
+        for index, rec in enumerate(rec_list, start=1):
+            if isinstance(rec, dict):
+                text = rec.get("recommendation") or rec.get("text") or rec.get("action") or "Recommendation"
+                st.markdown(f"- {index}. {text}")
+
+                priority = rec.get("priority")
+                category = rec.get("category")
+                reason = rec.get("reason") or rec.get("rationale")
+                expected_impact = rec.get("expected_impact")
+
+                if priority is not None:
+                    st.markdown(f"  - Priority: {_format_metric_value(priority)}")
+                if category is not None:
+                    st.markdown(f"  - Category: {_format_metric_value(category)}")
+                if reason is not None:
+                    st.markdown(f"  - Reason: {_format_metric_value(reason)}")
+                if expected_impact is not None:
+                    st.markdown(f"  - Expected impact: {_format_metric_value(expected_impact)}")
+            else:
+                st.markdown(f"- {index}. {_format_metric_value(rec)}")
+
+        st.divider()
+
+
+def _format_signed_value(value):
+    try:
+        number = float(value)
+        return f"{number:+.4f}"
+    except Exception:
+        return str(value)
+
+
+def display_explainability_detailed(explanations):
+    if not isinstance(explanations, dict) or not explanations:
+        st.info("No explainability output was generated for this run.")
+        return
+
+    st.markdown(
+        """
+        <div style='border:1px solid #dbeafe;background:#eff6ff;padding:12px;border-radius:10px;margin-bottom:10px;'>
+            <strong>Model Explainability</strong><br/>
+            This section highlights the top features that drive predictions and sample-level contributions.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    for target, payload in explanations.items():
+        if not isinstance(payload, dict):
+            with st.expander(f"Explainability for {target}", expanded=False):
+                pretty_display(payload)
+            continue
+
+        methods = payload.get("explainability_methods", {}) or {}
+        shap_on = bool(methods.get("shap"))
+        lime_on = bool(methods.get("lime"))
+
+        with st.expander(f"Explainability for {target}", expanded=True):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("SHAP", "Enabled" if shap_on else "Unavailable")
+            with col2:
+                st.metric("LIME", "Enabled" if lime_on else "Unavailable")
+            with col3:
+                st.metric("Sample Explanations", len(payload.get("sample_explanations", []) or []))
+
+            if payload.get("error"):
+                st.error(f"Explainability issue: {payload.get('error')}")
+
+            feature_importance = payload.get("feature_importance") or []
+            if feature_importance:
+                fi_df = pd.DataFrame(feature_importance)
+                score_col = "mean_abs_shap" if "mean_abs_shap" in fi_df.columns else ("importance" if "importance" in fi_df.columns else None)
+
+                st.markdown("#### Top Feature Drivers")
+                if score_col and "feature" in fi_df.columns:
+                    fi_df = fi_df.sort_values(score_col, ascending=False)
+                    fig = px.bar(
+                        fi_df.head(10),
+                        x=score_col,
+                        y="feature",
+                        orientation="h",
+                        title="Top features influencing prediction",
+                        color=score_col,
+                        color_continuous_scale="Blues",
+                    )
+                    fig.update_layout(yaxis=dict(autorange="reversed"), height=380, margin=dict(l=40, r=20, t=60, b=40))
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    top_rows = fi_df.head(5).to_dict(orient="records")
+                    st.markdown("#### Key Driver Points")
+                    for idx, row in enumerate(top_rows, start=1):
+                        score_val = row.get(score_col)
+                        st.markdown(
+                            f"- {idx}. {row.get('feature', 'feature')} | contribution_strength={_format_metric_value(score_val)}"
+                        )
+                else:
+                    pretty_display(feature_importance)
+            else:
+                st.info("No global feature importance found for this target.")
+
+            sample_explanations = payload.get("sample_explanations") or []
+            if sample_explanations:
+                st.markdown("#### Sample-level Explanation Highlights")
+                for sample in sample_explanations[:3]:
+                    row_id = sample.get("row", "N/A")
+                    contributions = sample.get("feature_contributions") or {}
+                    if isinstance(contributions, dict) and contributions:
+                        ranked = sorted(contributions.items(), key=lambda item: abs(float(item[1])) if str(item[1]).replace('.', '', 1).replace('-', '', 1).isdigit() else 0, reverse=True)[:5]
+                        st.markdown(f"- Row {row_id} top contribution factors:")
+                        for feature_name, feature_value in ranked:
+                            st.markdown(f"  - {feature_name}: {_format_signed_value(feature_value)}")
+                    else:
+                        st.markdown(f"- Row {row_id}: contribution details unavailable")
+
+            lime_explanations = payload.get("lime_explanations") or []
+            if lime_explanations:
+                st.markdown("#### LIME Local Rules")
+                for lime_item in lime_explanations[:3]:
+                    st.markdown(f"- Row {lime_item.get('row', 'N/A')} predicted_label={lime_item.get('predicted_label', 'N/A')}")
+                    for rule in lime_item.get("top_features", [])[:5]:
+                        st.markdown(f"  - {rule.get('feature', 'feature')}: weight={_format_signed_value(rule.get('weight'))}")
+
+            if payload.get("shap_error"):
+                st.warning(f"SHAP note: {payload.get('shap_error')}")
+            if payload.get("lime_error"):
+                st.warning(f"LIME note: {payload.get('lime_error')}")
 
 # ----------------------------
 # KPI Cards Dashboard
@@ -1700,10 +2049,15 @@ if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
     st.markdown(f"**Average risk score:** {output.get('risk_scoring', {}).get('mean_risk_score', output.get('risk_scoring', {}).get('average_risk', 'N/A'))}")
     st.markdown(f"**Target mode:** {output.get('diabetes_detection', {}).get('strategy', 'N/A')}")
 
+    auto_ai_answer = output.get("auto_ai_answer") if isinstance(output, dict) else None
+    if isinstance(auto_ai_answer, dict) and auto_ai_answer.get("answer"):
+        st.info(f"AI Answer: {auto_ai_answer.get('answer')}")
+
     sections = [
         ("🛠 Problem Discovery", "problem_discovery"),
         ("📌 Clinical Intelligence", "clinical_insights"),
         ("📊 Predictions", "predictions"),
+        ("🧭 Explainability", "explanations"),
         ("🎯 Recommendations", "recommendations"),
         ("🧪 Self-Critic", "self_critic"),
         ("🧬 Feature Engineering", "feature_engineering"),
@@ -1722,6 +2076,12 @@ if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
         st.subheader(title)
         if key == "problem_discovery":
             display_issues(output.get(key) or {})
+        elif key == "predictions":
+            display_predictions_point_form(output.get(key) or {})
+        elif key == "explanations":
+            display_explainability_detailed(output.get(key) or {})
+        elif key == "recommendations":
+            display_recommendations_point_form(output.get(key) or {})
         else:
             pretty_display(output.get(key) or {})
 
@@ -1733,12 +2093,7 @@ if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
         st.info("No explicit diabetes label target detected; the pipeline still analyzes feature risk signals.")
 
     recommendations = output.get("recommendations", {}) or {}
-    if recommendations:
-        for target, rec_list in recommendations.items():
-            with st.expander(f"Recommendations for {target} ({len(rec_list)})", expanded=True):
-                pretty_display(rec_list)
-    else:
-        st.warning("No recommendations were generated.")
+    display_recommendations_point_form(recommendations)
 
     st.subheader("🧠 Clinical Decision Intelligence")
     decisions = output.get("decisions") or {}

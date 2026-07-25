@@ -130,4 +130,4 @@ def generate_graphs(df: pd.DataFrame, folder_path=None):
 
     print(f"✅ Graphs generated: {len(saved_files)} files")
 
-    return saved_files
+    return saved_filesave a que

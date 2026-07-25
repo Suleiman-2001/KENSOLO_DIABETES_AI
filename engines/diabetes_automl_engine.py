@@ -1,4 +1,6 @@
 import warnings
+import os
+import pickle
 from copy import deepcopy
 
 import numpy as np
@@ -115,6 +117,99 @@ NEGATIVE_TOKENS = {
     "control",
     "without diabetes",
 }
+
+MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
+MODEL_ARTIFACT_PATH = os.path.join(MODEL_DIR, "diabetes_automl_model.pkl")
+STRICT_REUSE_IF_MODEL_EXISTS = True
+
+
+def _save_model_artifact(payload):
+    try:
+        os.makedirs(MODEL_DIR, exist_ok=True)
+        with open(MODEL_ARTIFACT_PATH, "wb") as artifact_file:
+            pickle.dump(payload, artifact_file)
+        return {
+            "status": "saved",
+            "artifact_path": MODEL_ARTIFACT_PATH,
+        }
+    except Exception as error:
+        return {
+            "status": "save_failed",
+            "artifact_path": MODEL_ARTIFACT_PATH,
+            "error": str(error),
+        }
+
+
+def _load_model_artifact():
+    if not os.path.exists(MODEL_ARTIFACT_PATH):
+        return None
+
+    try:
+        with open(MODEL_ARTIFACT_PATH, "rb") as artifact_file:
+            payload = pickle.load(artifact_file)
+        if not isinstance(payload, dict):
+            return None
+        return payload
+    except Exception:
+        return None
+
+
+def _align_features_for_inference(frame, feature_columns):
+    if not feature_columns:
+        return frame.copy()
+
+    return frame.reindex(columns=feature_columns, fill_value=np.nan)
+
+
+def _compute_prediction_outputs(pipeline, frame):
+    full_predictions = pipeline.predict(frame)
+
+    all_probabilities = None
+    if hasattr(pipeline, "predict_proba"):
+        try:
+            all_probabilities = pipeline.predict_proba(frame)[:, 1]
+        except Exception:
+            all_probabilities = None
+
+    predicted_probabilities = all_probabilities if all_probabilities is not None else full_predictions.astype(float)
+
+    risk_score_values = np.clip(np.asarray(predicted_probabilities, dtype=float) * 100.0, 0.0, 100.0)
+    risk_band = pd.cut(
+        risk_score_values,
+        bins=[-np.inf, 35, 70, np.inf],
+        labels=["Low", "Moderate", "High"],
+    ).astype(str)
+
+    top_risk_indices = np.argsort(-risk_score_values)[: min(10, len(risk_score_values))]
+    top_risk_cases = []
+    for index in top_risk_indices:
+        top_risk_cases.append(
+            {
+                "row": int(index),
+                "risk_score": round(float(risk_score_values[index]), 2),
+                "risk_band": str(risk_band[index]),
+                "predicted_probability": round(float(predicted_probabilities[index]), 4),
+            }
+        )
+
+    clinical_risk_summary = {
+        "mean_risk_score": round(float(np.mean(risk_score_values)), 2),
+        "median_risk_score": round(float(np.median(risk_score_values)), 2),
+        "max_risk_score": round(float(np.max(risk_score_values)), 2),
+        "high_risk_count": int((risk_score_values >= 70).sum()),
+        "moderate_risk_count": int(((risk_score_values >= 35) & (risk_score_values < 70)).sum()),
+        "low_risk_count": int((risk_score_values < 35).sum()),
+        "high_risk_share": round(float((risk_score_values >= 70).mean()), 4),
+        "top_risk_cases": top_risk_cases,
+    }
+    clinical_risk_summary["average_risk"] = clinical_risk_summary["mean_risk_score"]
+
+    return {
+        "full_predictions": full_predictions,
+        "predicted_probabilities": predicted_probabilities,
+        "risk_score_values": risk_score_values,
+        "clinical_risk_summary": clinical_risk_summary,
+    }
 
 
 def _safe_one_hot_encoder():
@@ -721,6 +816,139 @@ def run_predictive_model(df, targets_dict=None):
     if target_name in X.columns:
         X = X.drop(columns=[target_name], errors="ignore")
 
+    cached_bundle = _load_model_artifact()
+    if cached_bundle:
+        cached_pipeline = cached_bundle.get("pipeline")
+        cached_features = cached_bundle.get("feature_columns", [])
+        cached_target = str(cached_bundle.get("target_name", target_name))
+        cached_source = str(cached_bundle.get("target_source", "observed"))
+
+        if cached_pipeline is not None:
+            try:
+                aligned_X = _align_features_for_inference(X, cached_features)
+                cache_outputs = _compute_prediction_outputs(cached_pipeline, aligned_X)
+
+                full_predictions = cache_outputs["full_predictions"]
+                predicted_probabilities = cache_outputs["predicted_probabilities"]
+                clinical_risk_summary = cache_outputs["clinical_risk_summary"]
+                risk_score_values = cache_outputs["risk_score_values"]
+
+                clinical_risk_summary["target_source"] = cached_source
+                clinical_risk_summary["positive_rate"] = round(float(y.mean()), 4) if len(y) else 0.0
+
+                confidence = cached_bundle.get("confidence")
+                if confidence is None:
+                    confidence = max(0.5, min(0.99, float(cached_bundle.get("best_cv_score", 0.7))))
+
+                predictions = {
+                    cached_target: {
+                        "task": "classification",
+                        "target_source": cached_source,
+                        "best_model": cached_bundle.get("best_model", "PersistedModel"),
+                        "best_model_pipeline": cached_pipeline,
+                        "confidence": round(float(confidence), 4),
+                        "cv_primary_metric": cached_bundle.get("primary_metric", "roc_auc"),
+                        "cv_primary_score": cached_bundle.get("best_cv_score"),
+                        "sample_predictions": [int(value) for value in full_predictions[:5].tolist()],
+                        "sample_probabilities": [round(float(value), 4) for value in np.asarray(predicted_probabilities[:5])],
+                        "sample_risk_scores": [round(float(value), 2) for value in risk_score_values[:5]],
+                        "accuracy": round(float(accuracy_score(y, full_predictions)), 4) if len(y) and len(np.unique(y)) > 1 else None,
+                        "balanced_accuracy": round(float(balanced_accuracy_score(y, full_predictions)), 4) if len(y) and len(np.unique(y)) > 1 else None,
+                        "f1_score": round(float(f1_score(y, full_predictions, zero_division=0)), 4) if len(y) and len(np.unique(y)) > 1 else None,
+                        "precision": round(float(precision_score(y, full_predictions, zero_division=0)), 4) if len(y) and len(np.unique(y)) > 1 else None,
+                        "recall": round(float(recall_score(y, full_predictions, zero_division=0)), 4) if len(y) and len(np.unique(y)) > 1 else None,
+                        "roc_auc": round(float(roc_auc_score(y, predicted_probabilities)), 4) if len(y) and len(np.unique(y)) > 1 else None,
+                        "risk_score_summary": clinical_risk_summary,
+                        "classification_report": classification_report(y, full_predictions, output_dict=True, zero_division=0) if len(y) and len(np.unique(y)) > 1 else {},
+                        "feature_engineering_summary": feature_engineering_summary,
+                        "preprocessing_summary": cached_bundle.get("preprocessing_summary", {}),
+                    }
+                }
+
+                monitoring_summary = {
+                    "status": "active",
+                    "dataset": {
+                        "rows": int(len(modeling_frame)),
+                        "columns": int(modeling_frame.shape[1]),
+                        "missing_before": missing_before,
+                        "missing_after": missing_after,
+                        "duplicate_rows_removed": duplicate_rows,
+                    },
+                    "target": {
+                        "name": cached_target,
+                        "positive_rate": round(float(y.mean()), 4) if len(y) else 0.0,
+                        "negative_rate": round(float(1.0 - y.mean()), 4) if len(y) else 0.0,
+                    },
+                    "training": {
+                        "mode": "reused_saved_model",
+                        "trained_once": True,
+                        "best_model": cached_bundle.get("best_model", "PersistedModel"),
+                        "primary_metric": cached_bundle.get("primary_metric", "roc_auc"),
+                        "best_cv_score": cached_bundle.get("best_cv_score"),
+                        "artifact_path": MODEL_ARTIFACT_PATH,
+                    },
+                    "leaderboard": cached_bundle.get("leaderboard", []),
+                    "risk_distribution": {
+                        "mean": round(float(np.mean(risk_score_values)), 2),
+                        "std": round(float(np.std(risk_score_values)), 2),
+                        "p90": round(float(np.percentile(risk_score_values, 90)), 2),
+                    },
+                }
+
+                diabetes_detection = {
+                    "detected_targets": diabetes_targets,
+                    "prediction_target": cached_target,
+                    "strategy": cached_source,
+                    "future_likelihood_supported": True,
+                    "explicit_label_detected": bool(cached_source == "observed"),
+                    "proxy_target_generated": bool(cached_source != "observed"),
+                    "model_reused": True,
+                }
+
+                return {
+                    "predictions": predictions,
+                    "feature_engineering": feature_engineering_summary,
+                    "model_monitoring": monitoring_summary,
+                    "risk_scoring": clinical_risk_summary,
+                    "diabetes_detection": diabetes_detection,
+                    "model_leaderboard": cached_bundle.get("leaderboard", []),
+                    "shap_explanations": {},
+                    "diabetes_targets": diabetes_targets,
+                    "modeling_frame": modeling_frame,
+                }
+            except Exception as error:
+                if STRICT_REUSE_IF_MODEL_EXISTS:
+                    return {
+                        "predictions": {
+                            cached_target: {
+                                "error": "Saved model exists but could not run on this dataset. Retraining is disabled in strict reuse mode.",
+                                "task": "classification",
+                            }
+                        },
+                        "feature_engineering": feature_engineering_summary,
+                        "model_monitoring": {
+                            "status": "reuse_failed",
+                            "reason": str(error),
+                            "training": {
+                                "mode": "reused_saved_model",
+                                "trained_once": True,
+                                "artifact_path": MODEL_ARTIFACT_PATH,
+                            },
+                        },
+                        "risk_scoring": {},
+                        "diabetes_detection": {
+                            "detected_targets": diabetes_targets,
+                            "prediction_target": cached_target,
+                            "strategy": cached_source,
+                            "future_likelihood_supported": True,
+                            "model_reused": True,
+                        },
+                        "model_leaderboard": cached_bundle.get("leaderboard", []),
+                        "shap_explanations": {},
+                        "diabetes_targets": diabetes_targets,
+                        "modeling_frame": modeling_frame,
+                    }
+
     if y.nunique() < 2:
         return {
             "predictions": {
@@ -931,48 +1159,13 @@ def run_predictive_model(df, targets_dict=None):
     final_pipeline = _build_pipeline(preprocessor, best_estimator, use_smote)
     final_pipeline.fit(X, y)
 
-    all_probabilities = None
-    if hasattr(final_pipeline, "predict_proba"):
-        try:
-            all_probabilities = final_pipeline.predict_proba(X)[:, 1]
-        except Exception:
-            all_probabilities = None
-
-    full_predictions = final_pipeline.predict(X)
-    predicted_probabilities = all_probabilities if all_probabilities is not None else full_predictions.astype(float)
-
-    risk_score_values = np.clip(np.asarray(predicted_probabilities, dtype=float) * 100.0, 0.0, 100.0)
-    risk_band = pd.cut(
-        risk_score_values,
-        bins=[-np.inf, 35, 70, np.inf],
-        labels=["Low", "Moderate", "High"],
-    ).astype(str)
-
-    top_risk_indices = np.argsort(-risk_score_values)[: min(10, len(risk_score_values))]
-    top_risk_cases = []
-    for index in top_risk_indices:
-        top_risk_cases.append(
-            {
-                "row": int(index),
-                "risk_score": round(float(risk_score_values[index]), 2),
-                "risk_band": str(risk_band[index]),
-                "predicted_probability": round(float(predicted_probabilities[index]), 4),
-            }
-        )
-
-    clinical_risk_summary = {
-        "mean_risk_score": round(float(np.mean(risk_score_values)), 2),
-        "median_risk_score": round(float(np.median(risk_score_values)), 2),
-        "max_risk_score": round(float(np.max(risk_score_values)), 2),
-        "high_risk_count": int((risk_score_values >= 70).sum()),
-        "moderate_risk_count": int(((risk_score_values >= 35) & (risk_score_values < 70)).sum()),
-        "low_risk_count": int((risk_score_values < 35).sum()),
-        "high_risk_share": round(float((risk_score_values >= 70).mean()), 4),
-        "top_risk_cases": top_risk_cases,
-        "target_source": target_source,
-        "positive_rate": round(float(y.mean()), 4),
-    }
-    clinical_risk_summary["average_risk"] = clinical_risk_summary["mean_risk_score"]
+    prediction_outputs = _compute_prediction_outputs(final_pipeline, X)
+    full_predictions = prediction_outputs["full_predictions"]
+    predicted_probabilities = prediction_outputs["predicted_probabilities"]
+    risk_score_values = prediction_outputs["risk_score_values"]
+    clinical_risk_summary = prediction_outputs["clinical_risk_summary"]
+    clinical_risk_summary["target_source"] = target_source
+    clinical_risk_summary["positive_rate"] = round(float(y.mean()), 4)
 
     shap_explanations = {
         target_name: _build_explanations(final_pipeline, X)
@@ -1042,6 +1235,23 @@ def run_predictive_model(df, targets_dict=None):
             "p90": round(float(np.percentile(risk_score_values, 90)), 2),
         },
     }
+
+    persist_status = _save_model_artifact(
+        {
+            "pipeline": final_pipeline,
+            "target_name": target_name,
+            "target_source": target_source,
+            "feature_columns": X.columns.tolist(),
+            "best_model": best_candidate["name"],
+            "primary_metric": primary_metric,
+            "best_cv_score": round(float(best_cv_score), 4),
+            "confidence": round(confidence, 4),
+            "preprocessing_summary": preprocessing_summary,
+            "feature_engineering_summary": feature_engineering_summary,
+            "leaderboard": leaderboard,
+        }
+    )
+    monitoring_summary["persisted_model"] = persist_status
 
     if track_dataset_history is not None:
         try:
