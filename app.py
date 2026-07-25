@@ -1946,15 +1946,37 @@ if df is not None and not df.empty:
             
             # Display Autofix Summary
             with st.expander("Autofix Details", expanded=False):
-                if autofix_summary.get("missing", {}).get("filled"):
-                    st.write("**Filled Missing Values (≤20% nulls):**")
-                    for item in autofix_summary["missing"]["filled"]:
-                        st.write(f"  • {item['column']}: {item['null_pct']} nulls → {item['action']}")
-                
-                if autofix_summary.get("missing", {}).get("dropped"):
-                    st.write("**Dropped Rows with High Nulls (>20%):**")
-                    for item in autofix_summary["missing"]["dropped"]:
-                        st.write(f"  • {item['column']}: {item['null_pct']} nulls → Dropped {item['rows_before'] - item['rows_after']} rows")
+                missing = autofix_summary.get("missing", {}) or {}
+                filled = missing.get("filled", []) or []
+                dropped = missing.get("dropped", []) or []
+                duplicates_removed = int((autofix_summary.get("duplicates", {}) or {}).get("duplicates_removed", 0))
+                constant_removed = (autofix_summary.get("constant_columns", {}) or {}).get("constant_columns_removed", []) or []
+                final_shape = (autofix_summary.get("final_shape", {}) or {})
+
+                if filled:
+                    st.write("**Filled Missing Values (<=20% nulls):**")
+                    for item in filled:
+                        st.write(f"  • {item.get('column')}: {item.get('nulls', 0)} nulls -> {item.get('action')}")
+
+                if dropped:
+                    st.write("**Dropped Columns with High Missingness (>20%):**")
+                    for item in dropped:
+                        st.write(f"  • {item.get('column')}: {item.get('nulls', 0)} nulls -> {item.get('action')}")
+
+                st.write(f"**Duplicate rows removed:** {duplicates_removed}")
+
+                if constant_removed:
+                    st.write("**Constant columns removed:**")
+                    for col_name in constant_removed:
+                        st.write(f"  • {col_name}")
+                else:
+                    st.write("**Constant columns removed:** none")
+
+                if final_shape:
+                    st.write(f"**Final shape after Autofix:** {final_shape.get('rows', 'N/A')} rows x {final_shape.get('columns', 'N/A')} columns")
+
+                if not filled and not dropped and duplicates_removed == 0 and not constant_removed:
+                    st.info("Autofix ran, but no cleanup changes were needed for this dataset.")
         except Exception as e:
             st.error(f"Autofix failed: {e}")
     else:
