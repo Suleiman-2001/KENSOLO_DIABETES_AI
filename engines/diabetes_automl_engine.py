@@ -1,6 +1,8 @@
 import warnings
 import os
 import pickle
+import json
+import hashlib
 from copy import deepcopy
 
 import numpy as np
@@ -119,33 +121,56 @@ NEGATIVE_TOKENS = {
 }
 
 MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
-MODEL_ARTIFACT_PATH = os.path.join(MODEL_DIR, "diabetes_automl_model.pkl")
+MODEL_REGISTRY_DIR = os.path.join(MODEL_DIR, "diabetes_automl_registry")
+LEGACY_MODEL_ARTIFACT_PATH = os.path.join(MODEL_DIR, "diabetes_automl_model.pkl")
 STRICT_REUSE_IF_MODEL_EXISTS = True
 
 
-def _save_model_artifact(payload):
+def _compute_dataset_signature(frame, target_name, target_source):
+    schema = [
+        {
+            "name": str(column),
+            "dtype": str(frame[column].dtype),
+        }
+        for column in frame.columns
+    ]
+
+    payload = {
+        "target_name": str(target_name),
+        "target_source": str(target_source),
+        "schema": schema,
+    }
+    digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+    return digest[:16]
+
+
+def _artifact_path_for_signature(signature):
+    return os.path.join(MODEL_REGISTRY_DIR, f"diabetes_automl_{signature}.pkl")
+
+
+def _save_model_artifact(payload, artifact_path):
     try:
-        os.makedirs(MODEL_DIR, exist_ok=True)
-        with open(MODEL_ARTIFACT_PATH, "wb") as artifact_file:
+        os.makedirs(MODEL_REGISTRY_DIR, exist_ok=True)
+        with open(artifact_path, "wb") as artifact_file:
             pickle.dump(payload, artifact_file)
         return {
             "status": "saved",
-            "artifact_path": MODEL_ARTIFACT_PATH,
+            "artifact_path": artifact_path,
         }
     except Exception as error:
         return {
             "status": "save_failed",
-            "artifact_path": MODEL_ARTIFACT_PATH,
+            "artifact_path": artifact_path,
             "error": str(error),
         }
 
 
-def _load_model_artifact():
-    if not os.path.exists(MODEL_ARTIFACT_PATH):
+def _load_model_artifact(artifact_path):
+    if not os.path.exists(artifact_path):
         return None
 
     try:
-        with open(MODEL_ARTIFACT_PATH, "rb") as artifact_file:
+        with open(artifact_path, "rb") as artifact_file:
             payload = pickle.load(artifact_file)
         if not isinstance(payload, dict):
             return None
@@ -816,12 +841,21 @@ def run_predictive_model(df, targets_dict=None):
     if target_name in X.columns:
         X = X.drop(columns=[target_name], errors="ignore")
 
-    cached_bundle = _load_model_artifact()
+    dataset_signature = _compute_dataset_signature(X, target_name, target_source)
+    artifact_path = _artifact_path_for_signature(dataset_signature)
+
+    cached_bundle = _load_model_artifact(artifact_path)
+    if cached_bundle is None and os.path.exists(LEGACY_MODEL_ARTIFACT_PATH):
+        cached_bundle = _load_model_artifact(LEGACY_MODEL_ARTIFACT_PATH)
+        if isinstance(cached_bundle, dict):
+            cached_bundle.setdefault("_legacy_artifact_path", LEGACY_MODEL_ARTIFACT_PATH)
+
     if cached_bundle:
         cached_pipeline = cached_bundle.get("pipeline")
         cached_features = cached_bundle.get("feature_columns", [])
         cached_target = str(cached_bundle.get("target_name", target_name))
         cached_source = str(cached_bundle.get("target_source", "observed"))
+        cached_artifact_path = str(cached_bundle.get("_legacy_artifact_path", artifact_path))
 
         if cached_pipeline is not None:
             try:
@@ -885,7 +919,8 @@ def run_predictive_model(df, targets_dict=None):
                         "best_model": cached_bundle.get("best_model", "PersistedModel"),
                         "primary_metric": cached_bundle.get("primary_metric", "roc_auc"),
                         "best_cv_score": cached_bundle.get("best_cv_score"),
-                        "artifact_path": MODEL_ARTIFACT_PATH,
+                        "artifact_path": cached_artifact_path,
+                        "dataset_signature": dataset_signature,
                     },
                     "leaderboard": cached_bundle.get("leaderboard", []),
                     "risk_distribution": {
@@ -932,7 +967,8 @@ def run_predictive_model(df, targets_dict=None):
                             "training": {
                                 "mode": "reused_saved_model",
                                 "trained_once": True,
-                                "artifact_path": MODEL_ARTIFACT_PATH,
+                                "artifact_path": cached_artifact_path,
+                                "dataset_signature": dataset_signature,
                             },
                         },
                         "risk_scoring": {},
@@ -1241,6 +1277,7 @@ def run_predictive_model(df, targets_dict=None):
             "pipeline": final_pipeline,
             "target_name": target_name,
             "target_source": target_source,
+            "dataset_signature": dataset_signature,
             "feature_columns": X.columns.tolist(),
             "best_model": best_candidate["name"],
             "primary_metric": primary_metric,
@@ -1249,7 +1286,8 @@ def run_predictive_model(df, targets_dict=None):
             "preprocessing_summary": preprocessing_summary,
             "feature_engineering_summary": feature_engineering_summary,
             "leaderboard": leaderboard,
-        }
+        },
+        artifact_path,
     )
     monitoring_summary["persisted_model"] = persist_status
 

@@ -3,6 +3,8 @@ import pandas as pd
 import warnings
 import os
 import pickle
+import json
+import hashlib
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, accuracy_score
@@ -56,6 +58,22 @@ def _align_features_for_inference(frame, feature_columns):
     if not feature_columns:
         return frame.copy()
     return frame.reindex(columns=feature_columns, fill_value=np.nan)
+
+
+def _compute_dataset_signature(frame, target, task):
+    schema = [
+        {
+            "name": str(column),
+            "dtype": str(frame[column].dtype),
+        }
+        for column in frame.columns
+    ]
+    payload = {
+        "target": str(target),
+        "task": str(task),
+        "schema": schema,
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 
 
 # =========================================================
@@ -121,8 +139,9 @@ def run_predictive_model(df, targets_dict):
                 continue
 
             X, y, preprocessor = _prepare_features(clean_df, target)
+            dataset_signature = _compute_dataset_signature(X, target, "regression")
 
-            cache_key = f"regression::{target}"
+            cache_key = f"regression::{target}::{dataset_signature}"
             cached_entry = model_cache.get(cache_key, {})
             cached_model = cached_entry.get("pipeline") if isinstance(cached_entry, dict) else None
             if cached_model is not None:
@@ -206,6 +225,7 @@ def run_predictive_model(df, targets_dict):
                 "pipeline": best_model,
                 "best_model": best_name,
                 "feature_columns": X.columns.tolist(),
+                "dataset_signature": dataset_signature,
             }
             cache_updated = True
 
@@ -229,8 +249,9 @@ def run_predictive_model(df, targets_dict):
                 continue
 
             X, y, preprocessor = _prepare_features(clean_df, target)
+            dataset_signature = _compute_dataset_signature(X, target, "classification")
 
-            cache_key = f"classification::{target}"
+            cache_key = f"classification::{target}::{dataset_signature}"
             cached_entry = model_cache.get(cache_key, {})
             cached_model = cached_entry.get("pipeline") if isinstance(cached_entry, dict) else None
             if cached_model is not None:
@@ -300,6 +321,7 @@ def run_predictive_model(df, targets_dict):
                 "pipeline": best_model,
                 "best_model": best_name,
                 "feature_columns": X.columns.tolist(),
+                "dataset_signature": dataset_signature,
             }
             cache_updated = True
 
