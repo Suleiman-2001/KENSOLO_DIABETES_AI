@@ -19,6 +19,12 @@ def _prepare_explanation_inputs(model_pipeline, X):
     """Return a numeric feature matrix suitable for SHAP/LIME."""
     candidate = X.copy()
 
+    if hasattr(model_pipeline, "named_steps") and len(model_pipeline.named_steps) > 1:
+        preprocessor = model_pipeline[:-1]
+        expected_columns = getattr(preprocessor, "feature_names_in_", None)
+        if expected_columns is not None:
+            candidate = candidate.reindex(columns=list(expected_columns), fill_value=np.nan)
+
     # Prefer pipeline preprocessing if the model is a Pipeline.
     if hasattr(model_pipeline, "named_steps") and len(model_pipeline.named_steps) > 1:
         try:
