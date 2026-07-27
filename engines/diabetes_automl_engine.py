@@ -15,6 +15,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
     balanced_accuracy_score,
+    brier_score_loss,
     classification_report,
     f1_score,
     precision_score,
@@ -670,6 +671,78 @@ def _safe_auc(y_true, y_score):
         return None
 
 
+def _build_calibration_summary(y_true, y_prob, n_bins=10):
+    summary = {
+        "status": "unavailable",
+        "n_samples": 0,
+        "ece": None,
+        "brier_score": None,
+        "bins": [],
+    }
+
+    try:
+        y_arr = np.asarray(y_true, dtype=float)
+        p_arr = np.asarray(y_prob, dtype=float)
+
+        if y_arr.size == 0 or p_arr.size == 0 or y_arr.size != p_arr.size:
+            summary["reason"] = "empty_or_misaligned_inputs"
+            return summary
+
+        p_arr = np.clip(p_arr, 0.0, 1.0)
+        summary["n_samples"] = int(len(y_arr))
+        summary["brier_score"] = round(float(brier_score_loss(y_arr, p_arr)), 6)
+
+        if len(np.unique(y_arr)) < 2:
+            summary["reason"] = "single_class_target"
+            return summary
+
+        try:
+            bin_ids = pd.qcut(p_arr, q=min(n_bins, len(np.unique(p_arr))), labels=False, duplicates="drop")
+        except Exception:
+            bin_ids = pd.cut(p_arr, bins=min(n_bins, 10), labels=False, include_lowest=True)
+
+        bin_ids = np.asarray(bin_ids)
+        valid_mask = ~pd.isna(bin_ids)
+        if valid_mask.sum() == 0:
+            summary["reason"] = "no_valid_bins"
+            return summary
+
+        bin_ids = bin_ids[valid_mask].astype(int)
+        y_valid = y_arr[valid_mask]
+        p_valid = p_arr[valid_mask]
+
+        total = max(1, len(y_valid))
+        ece_accumulator = 0.0
+        bins = []
+        for bin_index in sorted(np.unique(bin_ids).tolist()):
+            mask = bin_ids == bin_index
+            count = int(mask.sum())
+            if count == 0:
+                continue
+
+            observed_rate = float(np.mean(y_valid[mask]))
+            predicted_rate = float(np.mean(p_valid[mask]))
+            ece_accumulator += abs(observed_rate - predicted_rate) * (count / total)
+
+            bins.append(
+                {
+                    "bin": int(bin_index),
+                    "count": count,
+                    "predicted_rate": round(predicted_rate, 4),
+                    "observed_rate": round(observed_rate, 4),
+                    "gap": round(observed_rate - predicted_rate, 4),
+                }
+            )
+
+        summary["status"] = "available"
+        summary["ece"] = round(float(ece_accumulator), 6)
+        summary["bins"] = bins
+        return summary
+    except Exception as error:
+        summary["reason"] = str(error)
+        return summary
+
+
 def _build_feature_names(preprocessor, frame):
     try:
         return preprocessor.get_feature_names_out().tolist()
@@ -869,6 +942,7 @@ def run_predictive_model(df, targets_dict=None):
 
                 clinical_risk_summary["target_source"] = cached_source
                 clinical_risk_summary["positive_rate"] = round(float(y.mean()), 4) if len(y) else 0.0
+                calibration_summary = _build_calibration_summary(y, predicted_probabilities)
 
                 confidence = cached_bundle.get("confidence")
                 if confidence is None:
@@ -921,6 +995,7 @@ def run_predictive_model(df, targets_dict=None):
                         "best_cv_score": cached_bundle.get("best_cv_score"),
                         "artifact_path": cached_artifact_path,
                         "dataset_signature": dataset_signature,
+                        "calibration": calibration_summary,
                     },
                     "leaderboard": cached_bundle.get("leaderboard", []),
                     "risk_distribution": {
@@ -1202,6 +1277,7 @@ def run_predictive_model(df, targets_dict=None):
     clinical_risk_summary = prediction_outputs["clinical_risk_summary"]
     clinical_risk_summary["target_source"] = target_source
     clinical_risk_summary["positive_rate"] = round(float(y.mean()), 4)
+    calibration_summary = _build_calibration_summary(y, predicted_probabilities)
 
     shap_explanations = {
         target_name: _build_explanations(final_pipeline, X)
@@ -1263,6 +1339,7 @@ def run_predictive_model(df, targets_dict=None):
             "best_cv_score": round(float(best_cv_score), 4),
             "smote_used": bool(use_smote),
             "optuna_available": bool(OPTUNA_AVAILABLE),
+            "calibration": calibration_summary,
         },
         "leaderboard": leaderboard,
         "risk_distribution": {

@@ -7,6 +7,7 @@ sys.path.append(os.path.abspath(os.getcwd()))
 os.makedirs("outputs", exist_ok=True)
 GRAPH_FOLDER = os.path.join("outputs", "graphs")
 os.makedirs(GRAPH_FOLDER, exist_ok=True)
+DRIFT_BASELINE_PATH = os.path.join("outputs", "drift_baseline_profile.json")
 import streamlit as st
 # ----------------------------
 # SAFE DEFAULTS (to avoid NameError)
@@ -96,14 +97,50 @@ def save_outputs(output):
     def _pdf_safe(text):
         return str(text).encode("latin-1", errors="ignore").decode("latin-1")
 
+    def _break_long_tokens(text, max_token_len=40):
+        """Insert spaces into very long tokens so PDF wrapping never fails."""
+        tokens = str(text).split(" ")
+        normalized = []
+        for token in tokens:
+            if len(token) <= max_token_len:
+                normalized.append(token)
+                continue
+
+            parts = [token[i:i + max_token_len] for i in range(0, len(token), max_token_len)]
+            normalized.append(" ".join(parts))
+
+        return " ".join(normalized)
+
+    def _pdf_safe_multicell(pdf_obj, text, line_height=6):
+        # Guard against cursor drift causing zero/negative available width in fpdf2.
+        pdf_obj.set_x(pdf_obj.l_margin)
+        available_width = pdf_obj.w - pdf_obj.l_margin - pdf_obj.r_margin
+        if available_width <= 10:
+            available_width = 180
+
+        safe_text = _pdf_safe(text)
+        if not safe_text:
+            safe_text = "-"
+        safe_text = _break_long_tokens(safe_text, max_token_len=32)
+
+        # Split by explicit new lines to preserve section formatting.
+        for chunk in safe_text.splitlines() or [safe_text]:
+            try:
+                pdf_obj.multi_cell(available_width, line_height, chunk)
+            except Exception:
+                fallback = chunk[:120] + " ...[truncated]" if len(chunk) > 120 else chunk
+                pdf_obj.set_x(pdf_obj.l_margin)
+                pdf_obj.cell(0, line_height, fallback, ln=True)
+
     def _pdf_add_section_title(pdf_obj, title):
         pdf_obj.set_font("Arial", "B", 13)
         pdf_obj.ln(4)
+        pdf_obj.set_x(pdf_obj.l_margin)
         pdf_obj.cell(0, 8, _pdf_safe(title), ln=True)
 
     def _pdf_add_bullet(pdf_obj, text):
         pdf_obj.set_font("Arial", "", 11)
-        pdf_obj.multi_cell(0, 6, _pdf_safe(f"- {text}"))
+        _pdf_safe_multicell(pdf_obj, f"- {text}", line_height=6)
 
     def _build_prediction_bullets(predictions_dict):
         lines = []
@@ -258,6 +295,9 @@ def save_outputs(output):
 
     predictions = output.get("predictions", {})
     explanations = output.get("explanations", {})
+    calibration = (((output.get("model_monitoring", {}) or {}).get("training", {}) or {}).get("calibration", {}) or {})
+    drift_summary = output.get("drift_summary", {}) if isinstance(output, dict) else {}
+    what_if_summary = output.get("what_if_summary", {}) if isinstance(output, dict) else {}
     diabetes_status = _derive_diabetes_status(output)
 
     # Predictions CSVs
@@ -305,6 +345,69 @@ def save_outputs(output):
         _pdf_add_section_title(pdf, "Explainability Summary")
         for line in _build_explainability_bullets(explanations):
             _pdf_add_bullet(pdf, line)
+
+        _pdf_add_section_title(pdf, "Confidence Calibration")
+        if calibration.get("status") == "available":
+            _pdf_add_bullet(pdf, f"ECE: {calibration.get('ece')}")
+            _pdf_add_bullet(pdf, f"Brier score: {calibration.get('brier_score')}")
+            _pdf_add_bullet(pdf, f"Samples: {calibration.get('n_samples')}")
+            calibration_bins = calibration.get("bins") or []
+            for bin_item in calibration_bins[:5]:
+                _pdf_add_bullet(
+                    pdf,
+                    "Bin {bin}: predicted={pred}, observed={obs}, gap={gap}, n={n}".format(
+                        bin=bin_item.get("bin", "N/A"),
+                        pred=bin_item.get("predicted_rate", "N/A"),
+                        obs=bin_item.get("observed_rate", "N/A"),
+                        gap=bin_item.get("gap", "N/A"),
+                        n=bin_item.get("count", "N/A"),
+                    ),
+                )
+        else:
+            _pdf_add_bullet(pdf, "Calibration metrics unavailable for this run.")
+
+        _pdf_add_section_title(pdf, "Data Drift Snapshot")
+        if drift_summary:
+            _pdf_add_bullet(pdf, f"Drift status: {drift_summary.get('status', 'N/A')}")
+            _pdf_add_bullet(pdf, f"Drift score: {drift_summary.get('drift_score', 'N/A')}")
+            top_numeric = drift_summary.get("top_numeric") or []
+            if top_numeric:
+                _pdf_add_bullet(pdf, "Top numeric shifts:")
+                for item in top_numeric[:5]:
+                    _pdf_add_bullet(
+                        pdf,
+                        "{feature}: baseline_mean={base}, current_mean={cur}, z_shift={shift}".format(
+                            feature=item.get("feature", "N/A"),
+                            base=item.get("baseline_mean", "N/A"),
+                            cur=item.get("current_mean", "N/A"),
+                            shift=item.get("standardized_shift", "N/A"),
+                        ),
+                    )
+            else:
+                _pdf_add_bullet(pdf, "No comparable numeric drift features available.")
+        else:
+            _pdf_add_bullet(pdf, "Drift baseline not initialized or drift summary unavailable.")
+
+        _pdf_add_section_title(pdf, "What-If Scenario Summary")
+        if what_if_summary:
+            _pdf_add_bullet(pdf, f"Target: {what_if_summary.get('target', 'N/A')}")
+            _pdf_add_bullet(pdf, f"Baseline risk: {what_if_summary.get('baseline_risk_pct', 'N/A')}%")
+            _pdf_add_bullet(pdf, f"Scenario risk: {what_if_summary.get('scenario_risk_pct', 'N/A')}%")
+            _pdf_add_bullet(pdf, f"Risk delta: {what_if_summary.get('risk_delta_pct', 'N/A')}%")
+            changed_features = what_if_summary.get("changed_features") or []
+            if changed_features:
+                _pdf_add_bullet(pdf, "Adjusted drivers:")
+                for feature in changed_features[:6]:
+                    _pdf_add_bullet(
+                        pdf,
+                        "{name}: {base} -> {new}".format(
+                            name=feature.get("feature", "N/A"),
+                            base=feature.get("baseline", "N/A"),
+                            new=feature.get("scenario", "N/A"),
+                        ),
+                    )
+        else:
+            _pdf_add_bullet(pdf, "Scenario simulation summary unavailable for this run.")
 
         pdf.output("outputs/report.pdf")
     except Exception as e:
@@ -905,6 +1008,424 @@ def derive_diabetes_status(output):
         "high_risk_share_pct": high_risk_share_pct,
         "severity": severity,
     }
+
+
+def _build_dataset_profile(df, max_features=20):
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()[:max_features]
+    categorical_cols = [
+        col for col in df.columns
+        if col not in numeric_cols and not pd.api.types.is_datetime64_any_dtype(df[col])
+    ][:max_features]
+
+    profile = {
+        "rows": int(len(df)),
+        "columns": int(df.shape[1]),
+        "numeric": {},
+        "categorical": {},
+    }
+
+    for col in numeric_cols:
+        series = pd.to_numeric(df[col], errors="coerce")
+        non_null = series.dropna()
+        if non_null.empty:
+            continue
+        profile["numeric"][col] = {
+            "mean": float(non_null.mean()),
+            "std": float(non_null.std(ddof=0)) if len(non_null) > 1 else 0.0,
+            "p10": float(non_null.quantile(0.10)),
+            "p90": float(non_null.quantile(0.90)),
+            "missing_rate": float(series.isna().mean()),
+        }
+
+    for col in categorical_cols:
+        series = df[col].astype(str).fillna("Unknown")
+        if series.empty:
+            continue
+        counts = series.value_counts(normalize=True)
+        top_value = str(counts.index[0]) if not counts.empty else "Unknown"
+        top_share = float(counts.iloc[0]) if not counts.empty else 0.0
+        profile["categorical"][col] = {
+            "top_value": top_value,
+            "top_share": top_share,
+            "missing_rate": float(df[col].isna().mean()),
+            "n_unique": int(df[col].nunique(dropna=True)),
+        }
+
+    return profile
+
+
+def _compute_drift_summary(current_profile, baseline_profile):
+    numeric_rows = []
+    categorical_rows = []
+
+    baseline_numeric = (baseline_profile or {}).get("numeric", {})
+    current_numeric = (current_profile or {}).get("numeric", {})
+    for col in sorted(set(baseline_numeric.keys()).intersection(current_numeric.keys())):
+        base = baseline_numeric[col]
+        cur = current_numeric[col]
+        base_std = abs(float(base.get("std", 0.0)))
+        denom = max(base_std, 1e-6)
+        z_shift = abs(float(cur.get("mean", 0.0)) - float(base.get("mean", 0.0))) / denom
+        numeric_rows.append(
+            {
+                "feature": col,
+                "baseline_mean": round(float(base.get("mean", 0.0)), 4),
+                "current_mean": round(float(cur.get("mean", 0.0)), 4),
+                "standardized_shift": round(float(z_shift), 4),
+            }
+        )
+
+    baseline_cat = (baseline_profile or {}).get("categorical", {})
+    current_cat = (current_profile or {}).get("categorical", {})
+    for col in sorted(set(baseline_cat.keys()).intersection(current_cat.keys())):
+        base = baseline_cat[col]
+        cur = current_cat[col]
+        share_delta = abs(float(cur.get("top_share", 0.0)) - float(base.get("top_share", 0.0)))
+        top_changed = str(cur.get("top_value", "")) != str(base.get("top_value", ""))
+        categorical_rows.append(
+            {
+                "feature": col,
+                "baseline_top": str(base.get("top_value", "")),
+                "current_top": str(cur.get("top_value", "")),
+                "top_share_delta": round(float(share_delta), 4),
+                "top_changed": bool(top_changed),
+            }
+        )
+
+    numeric_shift = np.mean([row["standardized_shift"] for row in numeric_rows]) if numeric_rows else 0.0
+    categorical_shift = np.mean([
+        row["top_share_delta"] + (0.25 if row["top_changed"] else 0.0)
+        for row in categorical_rows
+    ]) if categorical_rows else 0.0
+
+    drift_score = float(numeric_shift * 0.7 + categorical_shift * 0.3)
+    if drift_score >= 1.0:
+        status = "High"
+    elif drift_score >= 0.45:
+        status = "Moderate"
+    else:
+        status = "Low"
+
+    return {
+        "status": status,
+        "drift_score": round(drift_score, 4),
+        "numeric_rows": sorted(numeric_rows, key=lambda item: item["standardized_shift"], reverse=True),
+        "categorical_rows": sorted(categorical_rows, key=lambda item: item["top_share_delta"], reverse=True),
+    }
+
+
+def _build_report_drift_summary(df):
+    current_profile = _build_dataset_profile(df)
+    if not os.path.exists(DRIFT_BASELINE_PATH):
+        return {}
+
+    try:
+        import json
+        with open(DRIFT_BASELINE_PATH, "r", encoding="utf-8") as f:
+            baseline_profile = json.load(f)
+    except Exception:
+        return {}
+
+    drift = _compute_drift_summary(current_profile, baseline_profile)
+    return {
+        "status": drift.get("status"),
+        "drift_score": drift.get("drift_score"),
+        "top_numeric": (drift.get("numeric_rows") or [])[:10],
+        "top_categorical": (drift.get("categorical_rows") or [])[:10],
+    }
+
+
+def display_confidence_calibration(output):
+    st.subheader("📏 Confidence Calibration")
+
+    training = (output.get("model_monitoring", {}) or {}).get("training", {}) or {}
+    calibration = training.get("calibration") or {}
+
+    if calibration.get("status") != "available":
+        st.info("Calibration metrics are not available for this run.")
+        return
+
+    st.markdown(
+        """
+        <div style='border:1px solid #d1d5db;background:#f9fafb;padding:12px;border-radius:10px;margin-bottom:8px;'>
+            <strong>Classic Reliability View</strong><br/>
+            Lower ECE and Brier score indicate better-calibrated confidence estimates.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("ECE", calibration.get("ece", "N/A"))
+    with col2:
+        st.metric("Brier Score", calibration.get("brier_score", "N/A"))
+    with col3:
+        st.metric("Samples", calibration.get("n_samples", "N/A"))
+
+    bin_rows = calibration.get("bins") or []
+    if not bin_rows:
+        return
+
+    bin_df = pd.DataFrame(bin_rows)
+    st.markdown("#### Reliability by Probability Bin")
+    st.dataframe(bin_df, use_container_width=True)
+
+    chart_df = bin_df.melt(
+        id_vars=["bin"],
+        value_vars=["predicted_rate", "observed_rate"],
+        var_name="series",
+        value_name="rate",
+    )
+    fig = px.line(
+        chart_df,
+        x="bin",
+        y="rate",
+        color="series",
+        markers=True,
+        title="Predicted vs Observed Event Rate",
+        color_discrete_map={"predicted_rate": "#1d4ed8", "observed_rate": "#b91c1c"},
+    )
+    fig.update_yaxes(range=[0, 1])
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def display_drift_dashboard(df):
+    st.subheader("🧭 Data Drift Dashboard")
+
+    current_profile = _build_dataset_profile(df)
+    baseline_profile = None
+
+    if os.path.exists(DRIFT_BASELINE_PATH):
+        try:
+            import json
+            with open(DRIFT_BASELINE_PATH, "r", encoding="utf-8") as f:
+                baseline_profile = json.load(f)
+        except Exception:
+            baseline_profile = None
+
+    if baseline_profile is None:
+        try:
+            import json
+            with open(DRIFT_BASELINE_PATH, "w", encoding="utf-8") as f:
+                json.dump(_json_safe(current_profile), f, indent=2)
+            st.info("Drift baseline initialized from the current dataset. Run analysis again to compare drift.")
+        except Exception as error:
+            st.warning(f"Could not initialize drift baseline: {error}")
+        return
+
+    drift = _compute_drift_summary(current_profile, baseline_profile)
+    status_color = {"Low": "#16a34a", "Moderate": "#d97706", "High": "#dc2626"}.get(drift.get("status"), "#374151")
+
+    st.markdown(
+        f"""
+        <div style='border:1px solid #d1d5db;background:#ffffff;padding:12px;border-radius:10px;margin-bottom:8px;'>
+            <strong style='color:{status_color};'>Drift Status: {drift.get('status')}</strong><br/>
+            Composite Drift Score: {drift.get('drift_score')}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    numeric_rows = drift.get("numeric_rows") or []
+    if numeric_rows:
+        st.markdown("#### Top Numeric Shifts")
+        st.dataframe(pd.DataFrame(numeric_rows[:10]), use_container_width=True)
+
+    categorical_rows = drift.get("categorical_rows") or []
+    if categorical_rows:
+        st.markdown("#### Top Categorical Shifts")
+        st.dataframe(pd.DataFrame(categorical_rows[:10]), use_container_width=True)
+
+    if st.button("Set Current Dataset as Drift Baseline", key="update_drift_baseline"):
+        try:
+            import json
+            with open(DRIFT_BASELINE_PATH, "w", encoding="utf-8") as f:
+                json.dump(_json_safe(current_profile), f, indent=2)
+            st.success("Drift baseline updated.")
+        except Exception as error:
+            st.warning(f"Failed to update drift baseline: {error}")
+
+
+def _predict_probability(model, frame):
+    if hasattr(model, "predict_proba"):
+        proba = model.predict_proba(frame)
+        if getattr(proba, "ndim", 1) == 2 and proba.shape[1] > 1:
+            return float(proba[0, 1])
+        return float(np.asarray(proba).reshape(-1)[0])
+
+    prediction = model.predict(frame)
+    return float(np.clip(np.asarray(prediction).reshape(-1)[0], 0.0, 1.0))
+
+
+def _build_report_what_if_summary(df, output):
+    predictions = output.get("predictions", {}) if isinstance(output, dict) else {}
+    candidates = [
+        (target, info) for target, info in predictions.items()
+        if isinstance(info, dict) and info.get("best_model_pipeline") is not None
+    ]
+    if not candidates:
+        return {}
+
+    target, info = candidates[0]
+    model = info.get("best_model_pipeline")
+    if model is None:
+        return {}
+
+    feature_df = df.drop(columns=[target], errors="ignore").copy()
+    preprocess = model.named_steps.get("preprocess") if hasattr(model, "named_steps") else None
+    expected_columns = getattr(preprocess, "feature_names_in_", None) if preprocess is not None else None
+    if expected_columns is not None:
+        feature_df = feature_df.reindex(columns=list(expected_columns), fill_value=np.nan)
+
+    if feature_df.empty:
+        return {}
+
+    baseline_row = {}
+    for col in feature_df.columns:
+        series = feature_df[col]
+        if pd.api.types.is_numeric_dtype(series):
+            values = pd.to_numeric(series, errors="coerce").dropna()
+            baseline_row[col] = float(values.median()) if not values.empty else 0.0
+        else:
+            values = series.dropna().astype(str)
+            baseline_row[col] = str(values.mode().iloc[0]) if not values.empty else "Unknown"
+
+    numeric_columns = [col for col in feature_df.columns if pd.api.types.is_numeric_dtype(feature_df[col])]
+    priority_tokens = ["glucose", "hba1c", "a1c", "bmi", "age", "insulin", "pressure", "pregnan"]
+    ordered = [col for col in numeric_columns if any(token in str(col).lower() for token in priority_tokens)]
+    ordered += [col for col in numeric_columns if col not in ordered]
+    selected = ordered[:4]
+    if not selected:
+        return {}
+
+    scenario_row = baseline_row.copy()
+    changed = []
+    for col in selected:
+        series = pd.to_numeric(feature_df[col], errors="coerce").dropna()
+        if series.empty:
+            continue
+        upper = float(series.quantile(0.95))
+        baseline_value = float(scenario_row[col])
+        scenario_value = min(upper, baseline_value * 1.1)
+        scenario_row[col] = float(scenario_value)
+        changed.append(
+            {
+                "feature": col,
+                "baseline": round(baseline_value, 4),
+                "scenario": round(float(scenario_value), 4),
+            }
+        )
+
+    try:
+        baseline_frame = pd.DataFrame([baseline_row]).reindex(columns=feature_df.columns)
+        scenario_frame = pd.DataFrame([scenario_row]).reindex(columns=feature_df.columns)
+        baseline_prob = _predict_probability(model, baseline_frame)
+        scenario_prob = _predict_probability(model, scenario_frame)
+        return {
+            "target": target,
+            "baseline_risk_pct": round(float(baseline_prob) * 100.0, 2),
+            "scenario_risk_pct": round(float(scenario_prob) * 100.0, 2),
+            "risk_delta_pct": round((float(scenario_prob) - float(baseline_prob)) * 100.0, 2),
+            "changed_features": changed,
+        }
+    except Exception:
+        return {}
+
+
+def display_what_if_simulator(df, output):
+    st.subheader("🧪 What-If Risk Simulator")
+
+    predictions = output.get("predictions", {}) if isinstance(output, dict) else {}
+    model_targets = [
+        target for target, info in predictions.items()
+        if isinstance(info, dict) and info.get("best_model_pipeline") is not None
+    ]
+
+    if not model_targets:
+        st.info("No reusable trained pipeline found for scenario simulation in this run.")
+        return
+
+    selected_target = st.selectbox("Simulation target", options=model_targets, key="what_if_target")
+    model = predictions[selected_target].get("best_model_pipeline")
+    if model is None:
+        st.info("Selected target has no pipeline for simulation.")
+        return
+
+    feature_df = df.drop(columns=[selected_target], errors="ignore").copy()
+    preprocess = model.named_steps.get("preprocess") if hasattr(model, "named_steps") else None
+    expected_columns = getattr(preprocess, "feature_names_in_", None) if preprocess is not None else None
+    if expected_columns is not None:
+        feature_df = feature_df.reindex(columns=list(expected_columns), fill_value=np.nan)
+
+    if feature_df.empty:
+        st.info("No feature columns available for simulation.")
+        return
+
+    baseline_row = {}
+    for col in feature_df.columns:
+        series = feature_df[col]
+        if pd.api.types.is_numeric_dtype(series):
+            non_null = pd.to_numeric(series, errors="coerce").dropna()
+            baseline_row[col] = float(non_null.median()) if not non_null.empty else 0.0
+        else:
+            mode_series = series.dropna().astype(str)
+            baseline_row[col] = str(mode_series.mode().iloc[0]) if not mode_series.empty else "Unknown"
+
+    numeric_columns = [col for col in feature_df.columns if pd.api.types.is_numeric_dtype(feature_df[col])]
+    priority_tokens = ["glucose", "hba1c", "a1c", "bmi", "age", "insulin", "pressure", "pregnan"]
+    priority_features = [
+        col for col in numeric_columns
+        if any(token in str(col).lower() for token in priority_tokens)
+    ]
+    selected_features = (priority_features + [c for c in numeric_columns if c not in priority_features])[:6]
+
+    if not selected_features:
+        st.info("No numeric features available for interactive simulation.")
+        return
+
+    scenario = baseline_row.copy()
+    st.markdown("Adjust key drivers and simulate risk:")
+    for col in selected_features:
+        series = pd.to_numeric(feature_df[col], errors="coerce").dropna()
+        if series.empty:
+            continue
+
+        low = float(series.quantile(0.05))
+        high = float(series.quantile(0.95))
+        default = float(baseline_row[col])
+
+        if not np.isfinite(low) or not np.isfinite(high):
+            continue
+        if high <= low:
+            high = low + 1.0
+        default = min(max(default, low), high)
+
+        scenario[col] = st.slider(
+            f"{col}",
+            min_value=float(low),
+            max_value=float(high),
+            value=float(default),
+            key=f"whatif_{selected_target}_{col}",
+        )
+
+    baseline_frame = pd.DataFrame([baseline_row]).reindex(columns=feature_df.columns)
+    scenario_frame = pd.DataFrame([scenario]).reindex(columns=feature_df.columns)
+
+    try:
+        baseline_prob = _predict_probability(model, baseline_frame)
+        scenario_prob = _predict_probability(model, scenario_frame)
+        delta = scenario_prob - baseline_prob
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Baseline Risk", f"{baseline_prob * 100:.2f}%")
+        with col2:
+            st.metric("Scenario Risk", f"{scenario_prob * 100:.2f}%")
+        with col3:
+            st.metric("Risk Change", f"{delta * 100:+.2f}%")
+    except Exception as error:
+        st.warning(f"Scenario simulation failed: {error}")
 
 # ----------------------------
 # KPI Cards Dashboard
@@ -2152,16 +2673,7 @@ if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
                 rec_rows.append(row)
         pd.DataFrame(rec_rows).to_csv("outputs/recommendations.csv", index=False)
 
-        # Simple PDF Report
-        try:
-            from fpdf import FPDF
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.set_font("Arial", "B", 16)
-            pdf.cell(0, 10, "KENSOLO AI Report", ln=True, align="C")
-            pdf.output("outputs/report.pdf")
-        except Exception as e:
-            st.warning(f"PDF report generation failed: {e}")
+        # PDF generation is handled centrally in save_outputs(output).
 
     #st.success("✅ AI Analysis Complete! Files saved in outputs/")
 
@@ -2169,6 +2681,8 @@ if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
     # Display Outputs
     # ----------------------------
     output = st.session_state.output
+    output["drift_summary"] = _build_report_drift_summary(df)
+    output["what_if_summary"] = _build_report_what_if_summary(df, output)
     save_outputs(output)
 
     st.subheader("🧾 AI Analysis Summary")
@@ -2209,6 +2723,10 @@ if df is not None and st.button("Run AI Analysis", key="run_analysis_btn"):
         """,
         unsafe_allow_html=True,
     )
+
+    display_confidence_calibration(output)
+    display_drift_dashboard(df)
+    display_what_if_simulator(df, output)
 
     auto_ai_answer = output.get("auto_ai_answer") if isinstance(output, dict) else None
     if isinstance(auto_ai_answer, dict) and auto_ai_answer.get("answer"):
